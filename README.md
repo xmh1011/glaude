@@ -127,6 +127,8 @@ Agent 在对话中自主调用这些工具：
 |----|--------|------|
 | `provider` | `"anthropic"` | LLM 提供方：`anthropic` / `openai` / `ollama` |
 | `model` | `"claude-sonnet-4-20250514"` | 模型名称 |
+| `api_key` | | API 密钥（也可通过环境变量设置） |
+| `base_url` | | API 端点（也可通过环境变量设置） |
 | `permission_mode` | `"default"` | 权限模式（见下文） |
 | `log_dir` | `~/.glaude/logs` | 日志目录 |
 | `log_level` | `"info"` | 日志级别 |
@@ -135,8 +137,10 @@ Agent 在对话中自主调用这些工具：
 
 ```json
 {
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-20250514",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "api_key": "sk-xxx",
+  "base_url": "https://api.openai.com/v1",
   "permission_mode": "auto-edit",
   "mcp_servers": [
     {
@@ -353,4 +357,4 @@ make cross
 
 ## 许可证
 
-MIT
+[Apache License 2.0](LICENSE)

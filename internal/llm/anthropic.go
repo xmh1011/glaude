@@ -16,12 +16,16 @@ type AnthropicProvider struct {
 	client anthropic.Client
 }
 
-// NewAnthropicProvider creates a provider with the given API key.
+// NewAnthropicProvider creates a provider with the given API key and optional base URL.
 // If apiKey is empty, the SDK falls back to the ANTHROPIC_API_KEY environment variable.
-func NewAnthropicProvider(apiKey string) *AnthropicProvider {
+// If baseURL is empty, the SDK defaults to https://api.anthropic.com.
+func NewAnthropicProvider(apiKey, baseURL string) *AnthropicProvider {
 	var opts []option.RequestOption
 	if apiKey != "" {
 		opts = append(opts, option.WithAPIKey(apiKey))
+	}
+	if baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
 	}
 	return &AnthropicProvider{
 		client: anthropic.NewClient(opts...),
