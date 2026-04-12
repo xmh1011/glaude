@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/xmh1011/glaude/internal/compact"
+	"github.com/xmh1011/glaude/internal/hook"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/session"
@@ -25,19 +26,21 @@ import (
 
 // Agent drives the LLM loop for a single session.
 type Agent struct {
-	provider      llm.Provider
-	model         string
-	systemPrompt  string
-	messages      []llm.Message
-	maxTokens     int
-	totalUsage    llm.Usage
-	registry      *tool.Registry
-	budget        *compact.Budget
-	counter       *compact.TokenCounter
-	autoCompactor *compact.AutoCompactor
-	gate          *permission.Gate
-	session       *session.Store // nil = no persistence (tests, sub-agents)
-	lastUUID      string         // UUID of the last recorded entry for parentUUID chaining
+	provider       llm.Provider
+	model          string
+	systemPrompt   string
+	messages       []llm.Message
+	maxTokens      int
+	totalUsage     llm.Usage
+	registry       *tool.Registry
+	budget         *compact.Budget
+	counter        *compact.TokenCounter
+	autoCompactor  *compact.AutoCompactor
+	gate           *permission.Gate
+	session        *session.Store // nil = no persistence (tests, sub-agents)
+	lastUUID       string         // UUID of the last recorded entry for parentUUID chaining
+	hookEngine     *hook.Engine   // nil = no hooks (tests, sub-agents)
+	sessionStarted bool           // SessionStart hook fires only once
 }
 
 // New creates an Agent bound to the given provider and model.
@@ -78,6 +81,16 @@ func (a *Agent) Session() *session.Store {
 	return a.session
 }
 
+// SetHookEngine sets the lifecycle hook engine. Pass nil to disable hooks.
+func (a *Agent) SetHookEngine(e *hook.Engine) {
+	a.hookEngine = e
+}
+
+// HookEngine returns the current hook engine, or nil.
+func (a *Agent) HookEngine() *hook.Engine {
+	return a.hookEngine
+}
+
 // RestoreFrom loads a saved conversation into the agent's message history.
 // This is used by --continue and --resume to restore a previous session.
 func (a *Agent) RestoreFrom(entries []*session.Entry) {
@@ -96,6 +109,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	}
 	a.messages = append(a.messages, userMsg)
 	a.recordEntry("user", &userMsg)
+
+	// Fire SessionStart hook once.
+	a.fireSessionStart(ctx)
 
 	telemetry.Log.WithField("prompt_len", len(prompt)).Info("agent loop started")
 
@@ -159,6 +175,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		switch resp.StopReason {
 		case llm.StopEndTurn:
 			// LLM decided the task is done
+			a.fireStop(ctx)
 			return resp.TextContent(), nil
 
 		case llm.StopToolUse:
@@ -204,6 +221,9 @@ func (a *Agent) RunStream(ctx context.Context, prompt string, cb StreamCallback)
 	}
 	a.messages = append(a.messages, userMsg)
 	a.recordEntry("user", &userMsg)
+
+	// Fire SessionStart hook once.
+	a.fireSessionStart(ctx)
 
 	telemetry.Log.WithField("prompt_len", len(prompt)).Info("agent stream loop started")
 
@@ -277,6 +297,7 @@ func (a *Agent) RunStream(ctx context.Context, prompt string, cb StreamCallback)
 
 		switch resp.StopReason {
 		case llm.StopEndTurn:
+			a.fireStop(ctx)
 			return resp.TextContent(), nil
 
 		case llm.StopToolUse:
@@ -404,8 +425,48 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		return fmt.Sprintf("Error: tool %q not found", tb.Name), true
 	}
 
-	// Permission gate: check before executing
-	if a.gate != nil {
+	// --- PreToolUse hook ---
+	toolInput := tb.Input
+	hookSkipGate := false
+	if a.hookEngine != nil && a.hookEngine.HasHooks(hook.PreToolUse) {
+		cwd, _ := os.Getwd()
+		hr := a.hookEngine.Dispatch(ctx, hook.PreToolUse, &hook.HookInput{
+			CWD:       cwd,
+			ToolName:  tb.Name,
+			ToolInput: tb.Input,
+		})
+
+		// Blocked or Denied → return error to LLM.
+		if hr.Blocked || hr.Decision == hook.Deny {
+			msg := "Tool execution blocked by hook"
+			if len(hr.Messages) > 0 {
+				msg = strings.Join(hr.Messages, "; ")
+			}
+			if len(hr.Errors) > 0 {
+				msg = hr.Errors[0].Error()
+			}
+			telemetry.Log.WithField("tool", tb.Name).Info("hook denied tool execution")
+			return fmt.Sprintf("Permission denied by hook: %s", msg), true
+		}
+
+		// Hook may override the tool input.
+		if len(hr.UpdatedInput) > 0 {
+			toolInput = hr.UpdatedInput
+		}
+
+		// Hook Allow skips the permission gate.
+		if hr.Decision == hook.Allow {
+			hookSkipGate = true
+		}
+
+		// Stop session.
+		if hr.StopSession {
+			return "Session stopped by hook", true
+		}
+	}
+
+	// Permission gate: check before executing (unless hook already allowed).
+	if a.gate != nil && !hookSkipGate {
 		bashCmd := extractBashCommand(tb)
 		result := a.gate.Evaluate(ctx, tb.Name, t.IsReadOnly(), bashCmd)
 
@@ -427,7 +488,8 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		WithField("tool_use_id", tb.ID).
 		Debug("executing tool")
 
-	result, err := t.Execute(ctx, tb.Input)
+	result, err := t.Execute(ctx, toolInput)
+	isErr := false
 	if err != nil {
 		telemetry.Log.
 			WithField("tool", tb.Name).
@@ -436,15 +498,28 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		if result == "" {
 			result = err.Error()
 		}
-		return result, true
+		isErr = true
+	} else {
+		telemetry.Log.
+			WithField("tool", tb.Name).
+			WithField("result_len", len(result)).
+			Debug("tool execution success")
 	}
 
-	telemetry.Log.
-		WithField("tool", tb.Name).
-		WithField("result_len", len(result)).
-		Debug("tool execution success")
+	// --- PostToolUse hook ---
+	if a.hookEngine != nil && a.hookEngine.HasHooks(hook.PostToolUse) {
+		cwd, _ := os.Getwd()
+		a.hookEngine.Dispatch(ctx, hook.PostToolUse, &hook.HookInput{
+			CWD:        cwd,
+			ToolName:   tb.Name,
+			ToolInput:  tb.Input,
+			ToolResult: result,
+			IsError:    isErr,
+		})
+		// PostToolUse is informational — we don't act on the result.
+	}
 
-	return result, false
+	return result, isErr
 }
 
 // extractBashCommand extracts the "command" field from a Bash tool's input JSON.
@@ -530,4 +605,32 @@ func (a *Agent) toolDefinitions() []llm.ToolDefinition {
 		})
 	}
 	return defs
+}
+
+// fireSessionStart fires the SessionStart hook exactly once per agent lifetime.
+func (a *Agent) fireSessionStart(ctx context.Context) {
+	if a.hookEngine == nil || a.sessionStarted {
+		return
+	}
+	a.sessionStarted = true
+	if !a.hookEngine.HasHooks(hook.SessionStart) {
+		return
+	}
+	cwd, _ := os.Getwd()
+	hr := a.hookEngine.Dispatch(ctx, hook.SessionStart, &hook.HookInput{CWD: cwd})
+	for _, msg := range hr.Messages {
+		telemetry.Log.WithField("hook", "SessionStart").Info(msg)
+	}
+}
+
+// fireStop fires the Stop hook when the agent is about to end its turn.
+func (a *Agent) fireStop(ctx context.Context) {
+	if a.hookEngine == nil || !a.hookEngine.HasHooks(hook.Stop) {
+		return
+	}
+	cwd, _ := os.Getwd()
+	hr := a.hookEngine.Dispatch(ctx, hook.Stop, &hook.HookInput{CWD: cwd})
+	for _, msg := range hr.Messages {
+		telemetry.Log.WithField("hook", "Stop").Info(msg)
+	}
 }

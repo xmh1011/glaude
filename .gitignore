@@ -1,6 +1,9 @@
 # Binary
 /glaude
 
+# Build artifacts
+dist/
+
 # IDE
 .idea/
 .vscode/

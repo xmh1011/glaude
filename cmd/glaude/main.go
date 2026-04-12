@@ -18,6 +18,7 @@ import (
 
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/config"
+	"github.com/xmh1011/glaude/internal/hook"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/mcp"
 	"github.com/xmh1011/glaude/internal/memory"
@@ -133,6 +134,10 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				defer store.Close()
 				a.SetSession(store)
 
+				// Hook engine for one-shot mode
+				hookEngine := hook.NewEngine(sessionID)
+				a.SetHookEngine(hookEngine)
+
 				text, err := a.Run(cmd.Context(), userPrompt)
 				a.RecordLastPrompt(userPrompt)
 
@@ -170,6 +175,10 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			// Session persistence
 			sessionID := uuid.New().String()
+
+			// Hook engine for REPL mode (initialized after sessionID is known)
+			hookEngine := hook.NewEngine(sessionID)
+			a.SetHookEngine(hookEngine)
 
 			// Handle --continue: resume most recent session
 			if continueFlag {
@@ -229,6 +238,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 	// Subcommands
 	rootCmd.AddCommand(buildVersionCmd())
+	rootCmd.AddCommand(buildInitCmd())
 
 	return rootCmd
 }
