@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"glaude/internal/compact"
 	"glaude/internal/llm"
 	"glaude/internal/telemetry"
 	"glaude/internal/tool"
@@ -16,24 +17,30 @@ import (
 
 // Agent drives the LLM loop for a single session.
 type Agent struct {
-	provider     llm.Provider
-	model        string
-	systemPrompt string
-	messages     []llm.Message
-	maxTokens    int
-	totalUsage   llm.Usage
-	registry     *tool.Registry
+	provider      llm.Provider
+	model         string
+	systemPrompt  string
+	messages      []llm.Message
+	maxTokens     int
+	totalUsage    llm.Usage
+	registry      *tool.Registry
+	budget        *compact.Budget
+	counter       *compact.TokenCounter
+	autoCompactor *compact.AutoCompactor
 }
 
 // New creates an Agent bound to the given provider and model.
 // The registry may be nil if no tools are available (tools will return errors).
 func New(provider llm.Provider, model, systemPrompt string, registry *tool.Registry) *Agent {
 	return &Agent{
-		provider:     provider,
-		model:        model,
-		systemPrompt: systemPrompt,
-		maxTokens:    4096,
-		registry:     registry,
+		provider:      provider,
+		model:         model,
+		systemPrompt:  systemPrompt,
+		maxTokens:     4096,
+		registry:      registry,
+		budget:        compact.NewBudget(compact.DefaultContextWindow, compact.ResponseReserve),
+		counter:       compact.NewTokenCounter(),
+		autoCompactor: compact.NewAutoCompactor(provider, model),
 	}
 }
 
@@ -51,6 +58,24 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		// Check cancellation before each API call
 		if err := ctx.Err(); err != nil {
 			return "", err
+		}
+
+		// Apply MicroCompact: clear old tool results each iteration
+		a.messages = compact.MicroCompact(a.messages)
+
+		// Update budget and check if AutoCompact is needed
+		a.budget.Update(a.counter, a.systemPrompt, a.toolDefinitions(), a.messages)
+		if a.budget.NeedsCompact() {
+			telemetry.Log.
+				WithField("used", a.budget.Used()).
+				WithField("effective_window", a.budget.EffectiveWindow()).
+				Info("triggering auto-compact")
+			compacted, err := a.autoCompactor.Compact(ctx, a.messages)
+			if err != nil {
+				telemetry.Log.WithField("error", err.Error()).Warn("auto-compact failed")
+			} else {
+				a.messages = compacted
+			}
 		}
 
 		resp, err := a.provider.Complete(ctx, &llm.Request{
@@ -157,6 +182,11 @@ func (a *Agent) TotalUsage() llm.Usage {
 // Messages returns the current conversation history.
 func (a *Agent) Messages() []llm.Message {
 	return a.messages
+}
+
+// Budget returns the current token budget state.
+func (a *Agent) Budget() *compact.Budget {
+	return a.budget
 }
 
 // toolDefinitions converts Registry tools to LLM-ready definitions.
