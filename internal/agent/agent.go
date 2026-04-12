@@ -90,6 +90,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				telemetry.Log.WithField("error", err.Error()).Warn("auto-compact failed")
 			} else {
 				a.messages = compacted
+				a.budget.ResetCalibration() // API data no longer valid after compaction
 			}
 		}
 
@@ -107,6 +108,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		// Track cumulative usage
 		a.totalUsage.InputTokens += resp.Usage.InputTokens
 		a.totalUsage.OutputTokens += resp.Usage.OutputTokens
+
+		// Calibrate budget with API-reported input tokens for more accurate counting
+		a.budget.CalibrateFromAPI(resp.Usage.InputTokens, len(a.messages))
 
 		// Append assistant response to conversation history
 		a.messages = append(a.messages, llm.Message{

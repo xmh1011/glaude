@@ -39,19 +39,20 @@ type CheckResult struct {
 
 // Checker evaluates whether a tool invocation is permitted under the current mode.
 type Checker struct {
-	mode Mode
+	mode  Mode
+	rules *RuleSet // optional session-level rules
 }
 
 // NewChecker creates a Checker from configuration.
 // It reads the "permission_mode" setting from viper.
 func NewChecker() *Checker {
 	modeStr := viper.GetString("permission_mode")
-	return &Checker{mode: ParseMode(modeStr)}
+	return &Checker{mode: ParseMode(modeStr), rules: NewRuleSet()}
 }
 
 // NewCheckerWithMode creates a Checker with an explicit mode.
 func NewCheckerWithMode(mode Mode) *Checker {
-	return &Checker{mode: mode}
+	return &Checker{mode: mode, rules: NewRuleSet()}
 }
 
 // Mode returns the current permission mode.
@@ -64,14 +65,58 @@ func (c *Checker) SetMode(m Mode) {
 	c.mode = m
 }
 
+// Rules returns the rule set for adding session-level rules.
+func (c *Checker) Rules() *RuleSet {
+	return c.rules
+}
+
 // Check evaluates whether the given tool call should be allowed, denied, or
 // needs user confirmation.
+//
+// Evaluation order:
+//  1. Session-level rules (deny > ask > allow)
+//  2. Read-only tools always allowed
+//  3. Mode-specific evaluation
 //
 // Parameters:
 //   - toolName: the tool's Name() (e.g. "Bash", "Edit", "Read")
 //   - isReadOnly: whether the tool reports itself as read-only
 //   - bashCmd: for Bash tool, the actual command string (empty for non-Bash)
 func (c *Checker) Check(toolName string, isReadOnly bool, bashCmd string) CheckResult {
+	// Step 0: Check session-level rules first (deny > ask > allow)
+	if c.rules != nil {
+		var decision Decision
+		var reason string
+		var matched bool
+
+		if toolName == "Bash" && bashCmd != "" {
+			// For compound commands, evaluate each subcommand
+			subCmds := splitCompoundCommand(bashCmd)
+			if len(subCmds) > 1 {
+				// If any subcommand is denied, deny the whole command
+				for _, sub := range subCmds {
+					d, r, m := c.rules.EvaluateBashRule(sub)
+					if m && d == Deny {
+						return CheckResult{Decision: Deny, Reason: r, Tool: toolName}
+					}
+					if m && (d == Ask || d == Allow) {
+						decision = d
+						reason = r
+						matched = true
+					}
+				}
+			} else {
+				decision, reason, matched = c.rules.EvaluateBashRule(bashCmd)
+			}
+		} else {
+			decision, reason, matched = c.rules.EvaluateToolRule(toolName)
+		}
+
+		if matched {
+			return CheckResult{Decision: decision, Reason: reason, Tool: toolName}
+		}
+	}
+
 	// Step 1: Read-only tools are always allowed in all modes.
 	if isReadOnly {
 		return CheckResult{Decision: Allow, Reason: "read-only tool", Tool: toolName}

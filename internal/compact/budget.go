@@ -93,12 +93,21 @@ func (c *TokenCounter) CountToolDefinitions(tools []llm.ToolDefinition) int {
 }
 
 // Budget tracks token allocation across context components.
+// It supports two counting modes:
+//   - Local estimation via TokenCounter (always available)
+//   - API-calibrated counting: uses the last API response's input_tokens as a
+//     more accurate baseline, only estimating tokens for newly added messages.
+//     This matches Claude Code's tokens.ts approach.
 type Budget struct {
 	ContextWindow int // total window size
 	SystemPrompt  int // tokens used by system prompt
 	Tools         int // tokens used by tool definitions
 	Messages      int // tokens used by conversation messages
 	Reserved      int // tokens reserved for model response
+
+	// API-calibrated counting state
+	lastAPIInputTokens int // input_tokens from the most recent API response
+	lastMessageCount   int // number of messages when lastAPIInputTokens was recorded
 }
 
 // NewBudget creates a Budget with the given context window and reserve.
@@ -148,10 +157,44 @@ func (b *Budget) NeedsWarning() bool {
 }
 
 // Update recalculates all budget components using the given counter.
+// If API usage data has been calibrated via CalibrateFromAPI, it uses the
+// more accurate API-reported count for existing messages and only estimates
+// tokens for newly added messages since the last API call.
 func (b *Budget) Update(counter *TokenCounter, systemPrompt string, tools []llm.ToolDefinition, messages []llm.Message) {
 	b.SystemPrompt = counter.Count(systemPrompt)
 	b.Tools = counter.CountToolDefinitions(tools)
-	b.Messages = counter.CountMessages(messages)
+
+	if b.lastAPIInputTokens > 0 && b.lastMessageCount > 0 && len(messages) >= b.lastMessageCount {
+		// Use API-reported input_tokens as the baseline for messages seen so far.
+		// The API input_tokens includes system prompt + tools + messages, so
+		// subtract system + tools to get message-only count.
+		apiMessageTokens := b.lastAPIInputTokens - b.SystemPrompt - b.Tools
+		if apiMessageTokens < 0 {
+			apiMessageTokens = 0
+		}
+
+		// Only estimate tokens for messages added after the last API call
+		newMessages := messages[b.lastMessageCount:]
+		newTokens := counter.CountMessages(newMessages)
+		b.Messages = apiMessageTokens + newTokens
+	} else {
+		// Pure local estimation (no API data yet)
+		b.Messages = counter.CountMessages(messages)
+	}
+}
+
+// CalibrateFromAPI records the input_tokens from the most recent API response.
+// This provides a more accurate baseline for budget calculations, as the API
+// knows the exact token count including any model-specific overhead.
+func (b *Budget) CalibrateFromAPI(inputTokens int, messageCount int) {
+	b.lastAPIInputTokens = inputTokens
+	b.lastMessageCount = messageCount
+}
+
+// ResetCalibration clears the API calibration data (e.g., after auto-compact).
+func (b *Budget) ResetCalibration() {
+	b.lastAPIInputTokens = 0
+	b.lastMessageCount = 0
 }
 
 // estimateBlockTokens returns a rough token estimate for a content block.

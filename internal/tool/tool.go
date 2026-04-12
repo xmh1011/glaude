@@ -12,8 +12,20 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+)
+
+// Sentinel errors for file staleness detection.
+var (
+	// ErrFileNotRead is returned when an edit/write targets a file that
+	// hasn't been read yet in this session.
+	ErrFileNotRead = errors.New("file has not been read yet; read it first before editing")
+
+	// ErrFileModified is returned when the file has been modified on disk
+	// since the last recorded read/edit.
+	ErrFileModified = errors.New("file has been modified since last read; read it again before editing")
 )
 
 // Tool is the unified interface for all agent tools.

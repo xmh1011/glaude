@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/xmh1011/glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 // FileEditTool performs precise string replacement in files.
@@ -15,6 +16,7 @@ import (
 // (unless replace_all is set), then is replaced with new_string.
 type FileEditTool struct {
 	Checkpoint *memory.Checkpoint
+	FileState  *tool.FileStateCache
 }
 
 // Input is the parsed input for the Edit tool.
@@ -65,6 +67,13 @@ func (f *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (stri
 		return "", fmt.Errorf("old_string and new_string must be different")
 	}
 
+	// Staleness check: verify the file was read and hasn't been modified since
+	if f.FileState != nil {
+		if err := f.FileState.CheckStaleness(in.FilePath); err != nil {
+			return "", err
+		}
+	}
+
 	data, err := os.ReadFile(in.FilePath)
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", in.FilePath, err)
@@ -103,6 +112,14 @@ func (f *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (stri
 
 	if err := os.WriteFile(in.FilePath, []byte(newContent), info.Mode()); err != nil {
 		return "", fmt.Errorf("writing %s: %w", in.FilePath, err)
+	}
+
+	// Update file state after successful edit
+	if f.FileState != nil {
+		f.FileState.Set(in.FilePath, &tool.FileState{
+			Content:   newContent,
+			Timestamp: tool.GetFileMtime(in.FilePath),
+		})
 	}
 
 	if in.ReplaceAll {

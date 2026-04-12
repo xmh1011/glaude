@@ -102,8 +102,10 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
-				provider := llm.NewAnthropicProvider("")
-				reg := buildRegistry(nil, provider, model)
+				provider := llm.NewRetryProvider(
+				llm.NewAnthropicProvider(""), llm.DefaultRetryConfig(),
+			)
+			reg := buildRegistry(nil, provider, model)
 
 				// Load MCP servers from config
 				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -135,7 +137,9 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			// Default: REPL mode
 			telemetry.Log.WithField("mode", "repl").Info("entering REPL")
 
-			provider := llm.NewAnthropicProvider("")
+			provider := llm.NewRetryProvider(
+				llm.NewAnthropicProvider(""), llm.DefaultRetryConfig(),
+			)
 			cp := memory.NewCheckpoint()
 			reg := buildRegistry(cp, provider, model)
 
@@ -194,10 +198,11 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
+	fileState := tool.NewFileStateCache()
 	reg := tool.NewRegistry()
-	reg.Register(&filereadtool.FileReadTool{})
-	reg.Register(&fileedittool.FileEditTool{Checkpoint: cp})
-	reg.Register(&filewritetool.FileWriteTool{Checkpoint: cp})
+	reg.Register(&filereadtool.FileReadTool{FileState: fileState})
+	reg.Register(&fileedittool.FileEditTool{Checkpoint: cp, FileState: fileState})
+	reg.Register(&filewritetool.FileWriteTool{Checkpoint: cp, FileState: fileState})
 	reg.Register(bashtool.New())
 	reg.Register(&globtool.GlobTool{})
 	reg.Register(&greptool.GrepTool{})

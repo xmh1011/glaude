@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 // FileReadTool reads file contents with optional offset and line limit.
-type FileReadTool struct{}
+// When a FileStateCache is provided, it records each read for staleness tracking.
+type FileReadTool struct {
+	FileState *tool.FileStateCache
+}
 
 // Input is the parsed input for the Read tool.
 type Input struct {
@@ -86,5 +91,16 @@ func (f *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (stri
 		}
 		fmt.Fprintf(&b, "%6d\t%s\n", i+1, line)
 	}
+
+	// Record file state for staleness detection by FileEditTool/FileWriteTool
+	if f.FileState != nil {
+		f.FileState.Set(in.FilePath, &tool.FileState{
+			Content:   string(data),
+			Timestamp: tool.GetFileMtime(in.FilePath),
+			Offset:    in.Offset,
+			Limit:     in.Limit,
+		})
+	}
+
 	return b.String(), nil
 }

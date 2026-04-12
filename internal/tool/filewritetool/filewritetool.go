@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 
 	"github.com/xmh1011/glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 // FileWriteTool creates new files or completely overwrites existing ones.
 // Parent directories are created automatically.
 type FileWriteTool struct {
 	Checkpoint *memory.Checkpoint
+	FileState  *tool.FileStateCache
 }
 
 // Input is the parsed input for the Write tool.
@@ -60,6 +62,16 @@ func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (str
 		return "", fmt.Errorf("creating directories %s: %w", dir, err)
 	}
 
+	// Staleness check for existing files: verify the file was read first
+	if f.FileState != nil {
+		if _, statErr := os.Stat(in.FilePath); statErr == nil {
+			// File exists — check staleness before overwriting
+			if err := f.FileState.CheckStaleness(in.FilePath); err != nil {
+				return "", err
+			}
+		}
+	}
+
 	// Checkpoint: save file state before mutation
 	if f.Checkpoint != nil {
 		txID := f.Checkpoint.NextTxID()
@@ -70,6 +82,14 @@ func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (str
 
 	if err := os.WriteFile(in.FilePath, []byte(in.Content), 0644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", in.FilePath, err)
+	}
+
+	// Update file state after successful write
+	if f.FileState != nil {
+		f.FileState.Set(in.FilePath, &tool.FileState{
+			Content:   in.Content,
+			Timestamp: tool.GetFileMtime(in.FilePath),
+		})
 	}
 
 	return fmt.Sprintf("Successfully wrote to %s (%d bytes)", in.FilePath, len(in.Content)), nil
