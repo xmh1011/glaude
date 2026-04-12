@@ -84,7 +84,14 @@ type Request struct {
 	System    string
 	Messages  []Message
 	MaxTokens int
-	// Tools will be added in Phase 2.
+	Tools     []ToolDefinition
+}
+
+// ToolDefinition describes a tool for the LLM.
+type ToolDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
 }
 
 // Response encapsulates a provider-agnostic completion response.

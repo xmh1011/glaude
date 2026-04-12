@@ -42,6 +42,10 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req *Request) (*Respon
 		}
 	}
 
+	if len(req.Tools) > 0 {
+		params.Tools = toAnthropicTools(req.Tools)
+	}
+
 	telemetry.Log.
 		WithField("model", req.Model).
 		WithField("msg_count", len(req.Messages)).
@@ -116,5 +120,35 @@ func fromAnthropicMessage(msg *anthropic.Message) *Response {
 			InputTokens:  int(msg.Usage.InputTokens),
 			OutputTokens: int(msg.Usage.OutputTokens),
 		},
+	}
+}
+
+// toAnthropicTools converts unified tool definitions to Anthropic SDK format.
+func toAnthropicTools(tools []ToolDefinition) []anthropic.ToolUnionParam {
+	out := make([]anthropic.ToolUnionParam, 0, len(tools))
+	for _, t := range tools {
+		schema := toAnthropicInputSchema(t.InputSchema)
+		out = append(out, anthropic.ToolUnionParam{
+			OfTool: &anthropic.ToolParam{
+				Name:        t.Name,
+				Description: anthropic.Opt(t.Description),
+				InputSchema: schema,
+			},
+		})
+	}
+	return out
+}
+
+// toAnthropicInputSchema converts a raw JSON Schema to ToolInputSchemaParam.
+func toAnthropicInputSchema(raw json.RawMessage) anthropic.ToolInputSchemaParam {
+	var parsed struct {
+		Properties map[string]interface{} `json:"properties"`
+		Required   []string               `json:"required"`
+	}
+	json.Unmarshal(raw, &parsed)
+
+	return anthropic.ToolInputSchemaParam{
+		Properties: parsed.Properties,
+		Required:   parsed.Required,
 	}
 }

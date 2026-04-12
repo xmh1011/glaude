@@ -58,6 +58,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			System:    a.systemPrompt,
 			Messages:  a.messages,
 			MaxTokens: a.maxTokens,
+			Tools:     a.toolDefinitions(),
 		})
 		if err != nil {
 			return "", fmt.Errorf("iteration %d: %w", iteration, err)
@@ -156,4 +157,21 @@ func (a *Agent) TotalUsage() llm.Usage {
 // Messages returns the current conversation history.
 func (a *Agent) Messages() []llm.Message {
 	return a.messages
+}
+
+// toolDefinitions converts Registry tools to LLM-ready definitions.
+func (a *Agent) toolDefinitions() []llm.ToolDefinition {
+	if a.registry == nil {
+		return nil
+	}
+	tools := a.registry.All()
+	defs := make([]llm.ToolDefinition, 0, len(tools))
+	for _, t := range tools {
+		defs = append(defs, llm.ToolDefinition{
+			Name:        t.Name(),
+			Description: t.Description(),
+			InputSchema: t.InputSchema(),
+		})
+	}
+	return defs
 }
