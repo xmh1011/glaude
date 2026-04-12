@@ -18,6 +18,7 @@ import (
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/config"
 	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/mcp"
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/prompt"
@@ -92,7 +93,11 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
-				reg := buildRegistry(nil)
+				reg := buildRegistry(nil, provider, "claude-sonnet-4-20250514")
+
+				// Load MCP servers from config
+				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+				defer mcpMgr.Close()
 
 				// Load directive files (GLAUDE.md) from all tiers
 				cwd, _ := os.Getwd()
@@ -122,7 +127,11 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			provider := llm.NewAnthropicProvider("")
 			cp := memory.NewCheckpoint()
-			reg := buildRegistry(cp)
+			reg := buildRegistry(cp, provider, "claude-sonnet-4-20250514")
+
+			// Load MCP servers from config
+			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+			defer mcpMgr.Close()
 
 			cwd, _ := os.Getwd()
 			mem := &memory.FileStore{}
@@ -170,7 +179,8 @@ func buildVersionCmd() *cobra.Command {
 
 // buildRegistry creates a tool registry with all built-in tools.
 // If cp is nil, a new Checkpoint is created internally.
-func buildRegistry(cp *memory.Checkpoint) *tool.Registry {
+// provider and model are used for AgentTool's sub-agent spawning.
+func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *tool.Registry {
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
@@ -182,5 +192,6 @@ func buildRegistry(cp *memory.Checkpoint) *tool.Registry {
 	reg.Register(&tool.GlobTool{})
 	reg.Register(&tool.GrepTool{})
 	reg.Register(&tool.LSTool{})
+	reg.Register(&tool.AgentTool{Provider: provider, Model: model, Registry: reg})
 	return reg
 }
