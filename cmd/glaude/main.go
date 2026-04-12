@@ -14,7 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"glaude/internal/agent"
 	"glaude/internal/config"
+	"glaude/internal/llm"
 	"glaude/internal/telemetry"
 )
 
@@ -82,9 +84,21 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			if prompt != "" {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
-				fmt.Printf("[oneshot] prompt: %s\n", prompt)
-				fmt.Println("(Agent loop not yet implemented)")
-				return nil
+
+				provider := llm.NewAnthropicProvider("")
+				a := agent.New(provider, "claude-sonnet-4-20250514", "You are a helpful assistant.")
+				text, err := a.Run(cmd.Context(), prompt)
+
+				usage := a.TotalUsage()
+				telemetry.Log.
+					WithField("input_tokens", usage.InputTokens).
+					WithField("output_tokens", usage.OutputTokens).
+					Info("oneshot complete")
+
+				if text != "" {
+					fmt.Println(text)
+				}
+				return err
 			}
 			// Default: REPL mode
 			telemetry.Log.WithField("mode", "repl").Info("entering REPL")

@@ -7,6 +7,7 @@ package telemetry
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -17,7 +18,14 @@ import (
 
 // Log is the package-level ghost logger.
 // All internal subsystems should use this logger instead of writing to stdout/stderr.
-var Log *logrus.Logger
+// Before Init() is called, Log silently discards all output (safe for tests).
+var Log = newDiscardLogger()
+
+func newDiscardLogger() *logrus.Logger {
+	l := logrus.New()
+	l.SetOutput(io.Discard)
+	return l
+}
 
 // Init initializes the dual-track logging system.
 //
