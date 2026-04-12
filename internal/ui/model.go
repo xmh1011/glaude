@@ -268,19 +268,29 @@ func (m Model) renderMessage(msg displayMessage) string {
 	}
 }
 
-// renderStatusBar renders the bottom status bar.
+// renderStatusBar renders the bottom status bar with token budget indicator.
 func (m Model) renderStatusBar() string {
 	usage := m.agent.TotalUsage()
+	budget := m.agent.Budget()
 	left := fmt.Sprintf(" %d msgs", len(m.messages))
-	right := fmt.Sprintf("tokens: %d in / %d out ",
-		usage.InputTokens, usage.OutputTokens)
+
+	pct := budget.UsagePercent()
+	right := fmt.Sprintf("ctx: %.0f%% | %d in / %d out ",
+		pct, usage.InputTokens, usage.OutputTokens)
 
 	gap := ""
 	if m.width > len(left)+len(right) {
 		gap = strings.Repeat(" ", m.width-len(left)-len(right))
 	}
 
-	return statusBarStyle.Render(left + gap + right)
+	style := statusBarStyle
+	if budget.NeedsCompact() {
+		style = statusBarStyle.Background(lipgloss.Color("124")) // red bg
+	} else if budget.NeedsWarning() {
+		style = statusBarStyle.Background(lipgloss.Color("130")) // yellow bg
+	}
+
+	return style.Render(left + gap + right)
 }
 
 // runAgent sends the prompt to the agent in a goroutine and returns a Cmd.

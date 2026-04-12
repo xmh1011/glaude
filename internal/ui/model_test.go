@@ -58,7 +58,7 @@ func TestModel_RenderStatusBar(t *testing.T) {
 	m.width = 80
 	bar := m.renderStatusBar()
 	assert.Contains(t, bar, "msgs")
-	assert.Contains(t, bar, "tokens")
+	assert.Contains(t, bar, "ctx:")
 }
 
 func TestModel_RenderMessage_User(t *testing.T) {
