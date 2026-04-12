@@ -1,0 +1,117 @@
+// Package main is the entry point for the glaude CLI.
+//
+// It establishes the global context cancellation tree, initializes
+// configuration and telemetry, then dispatches to the appropriate
+// command handler via cobra.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/spf13/cobra"
+
+	"glaude/internal/config"
+	"glaude/internal/telemetry"
+)
+
+// version is set at build time via -ldflags.
+var version = "dev"
+
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	// --- Cancellation Tree ---
+	// First signal: graceful shutdown (cancel context).
+	// Second signal: force exit.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		fmt.Fprintf(os.Stderr, "\nReceived %s, shutting down gracefully...\n", sig)
+		cancel()
+		// Second signal: force exit
+		sig = <-sigCh
+		fmt.Fprintf(os.Stderr, "\nReceived %s again, forcing exit.\n", sig)
+		os.Exit(1)
+	}()
+
+	// --- CLI Command Tree ---
+	rootCmd := buildRootCmd(ctx)
+
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func buildRootCmd(ctx context.Context) *cobra.Command {
+	var prompt string
+
+	rootCmd := &cobra.Command{
+		Use:   "glaude",
+		Short: "AI Coding Agent powered by LLM",
+		Long:  "glaude is a Go implementation of an AI coding agent, inspired by Claude Code architecture.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize config (layered merge)
+			if err := config.Init(); err != nil {
+				return fmt.Errorf("config: %w", err)
+			}
+			// Initialize ghost logging
+			if err := telemetry.Init(); err != nil {
+				return fmt.Errorf("telemetry: %w", err)
+			}
+			telemetry.Log.WithField("version", version).Info("glaude session started")
+			return nil
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			telemetry.Close()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if prompt != "" {
+				// One-shot mode: run a single prompt and exit
+				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
+				fmt.Printf("[oneshot] prompt: %s\n", prompt)
+				fmt.Println("(Agent loop not yet implemented)")
+				return nil
+			}
+			// Default: REPL mode
+			telemetry.Log.WithField("mode", "repl").Info("entering REPL")
+			fmt.Println("glaude REPL mode (not yet implemented)")
+			fmt.Println("Press Ctrl+C to exit.")
+
+			// Block until context is cancelled
+			<-cmd.Context().Done()
+			return nil
+		},
+	}
+
+	// Flags
+	rootCmd.Flags().StringVarP(&prompt, "prompt", "p", "", "Run a single prompt and exit")
+
+	// Subcommands
+	rootCmd.AddCommand(buildVersionCmd())
+
+	return rootCmd
+}
+
+func buildVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("glaude %s\n", version)
+		},
+	}
+}
