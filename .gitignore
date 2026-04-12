@@ -17,3 +17,6 @@ Thumbs.db
 
 # Logs
 *.jsonl
+
+# Project config (may contain API keys)
+.glaude.json
