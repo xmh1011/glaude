@@ -73,4 +73,7 @@ var (
 
 	diffHunkStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("36"))
+
+	dividerStyle = lipgloss.NewStyle().
+		Foreground(dimColor)
 )

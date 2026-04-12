@@ -17,7 +17,7 @@ import (
 
 func TestHandleSlashCommand_Help(t *testing.T) {
 	m := newTestModel(t)
-	m, _ = m.handleSlashCommand("/help")
+	m.handleSlashCommand("/help")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -33,14 +33,14 @@ func TestHandleSlashCommand_Clear(t *testing.T) {
 	m.messages = append(m.messages, displayMessage{role: llm.RoleUser, text: "hello"})
 	m.messages = append(m.messages, displayMessage{role: llm.RoleAssistant, text: "hi"})
 
-	m, _ = m.handleSlashCommand("/clear")
+	m.handleSlashCommand("/clear")
 	require.Len(t, m.messages, 1)
 	assert.Contains(t, m.messages[0].text, "cleared")
 }
 
 func TestHandleSlashCommand_Context(t *testing.T) {
 	m := newTestModel(t)
-	m, _ = m.handleSlashCommand("/context")
+	m.handleSlashCommand("/context")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -51,7 +51,7 @@ func TestHandleSlashCommand_Context(t *testing.T) {
 func TestHandleSlashCommand_Undo_NoCheckpoint(t *testing.T) {
 	m := newTestModel(t)
 	m.checkpoint = nil
-	m, _ = m.handleSlashCommand("/undo")
+	m.handleSlashCommand("/undo")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -60,7 +60,7 @@ func TestHandleSlashCommand_Undo_NoCheckpoint(t *testing.T) {
 
 func TestHandleSlashCommand_Undo_EmptyStack(t *testing.T) {
 	m := newTestModel(t)
-	m, _ = m.handleSlashCommand("/undo")
+	m.handleSlashCommand("/undo")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -76,7 +76,7 @@ func TestHandleSlashCommand_Undo_WithCheckpoint(t *testing.T) {
 	require.NoError(t, m.checkpoint.Save("tx-1", path))
 	os.WriteFile(path, []byte("modified"), 0644)
 
-	m, _ = m.handleSlashCommand("/undo")
+	m.handleSlashCommand("/undo")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -89,7 +89,7 @@ func TestHandleSlashCommand_Undo_WithCheckpoint(t *testing.T) {
 
 func TestHandleSlashCommand_Unknown(t *testing.T) {
 	m := newTestModel(t)
-	m, _ = m.handleSlashCommand("/unknown_xyz")
+	m.handleSlashCommand("/unknown_xyz")
 	require.NotEmpty(t, m.messages)
 
 	last := m.messages[len(m.messages)-1]
@@ -99,14 +99,14 @@ func TestHandleSlashCommand_Unknown(t *testing.T) {
 
 func TestHandleSlashCommand_Exit(t *testing.T) {
 	m := newTestModel(t)
-	m, cmd := m.handleSlashCommand("/exit")
+	_, cmd := m.handleSlashCommand("/exit")
 	assert.True(t, m.quitting)
 	assert.NotNil(t, cmd)
 }
 
 func TestHandleSlashCommand_Quit(t *testing.T) {
 	m := newTestModel(t)
-	m, cmd := m.handleSlashCommand("/quit")
+	_, cmd := m.handleSlashCommand("/quit")
 	assert.True(t, m.quitting)
 	assert.NotNil(t, cmd)
 }
@@ -117,7 +117,7 @@ func TestHandleSlashCommand_Mode_Show(t *testing.T) {
 	perm := permission.NewGate(permission.NewCheckerWithMode(permission.ModeDefault), nil)
 	m.agent.SetGate(perm)
 
-	m, _ = m.handleSlashCommand("/mode")
+	m.handleSlashCommand("/mode")
 	require.NotEmpty(t, m.messages)
 	last := m.messages[len(m.messages)-1]
 	assert.Contains(t, last.text, "default")
@@ -129,7 +129,7 @@ func TestHandleSlashCommand_Mode_Set(t *testing.T) {
 	perm := permission.NewGate(permission.NewCheckerWithMode(permission.ModeDefault), nil)
 	m.agent.SetGate(perm)
 
-	m, _ = m.handleSlashCommand("/mode auto-edit")
+	m.handleSlashCommand("/mode auto-edit")
 	require.NotEmpty(t, m.messages)
 	last := m.messages[len(m.messages)-1]
 	assert.Contains(t, last.text, "auto-edit")
@@ -142,7 +142,7 @@ func TestHandleSlashCommand_Mode_NoGate(t *testing.T) {
 	m := newTestModel(t)
 	m.agent.SetGate(nil) // no gate
 
-	m, _ = m.handleSlashCommand("/mode")
+	m.handleSlashCommand("/mode")
 	require.NotEmpty(t, m.messages)
 	last := m.messages[len(m.messages)-1]
 	assert.Contains(t, last.text, "not configured")
@@ -160,14 +160,14 @@ func (p *testMockProvider) Complete(_ context.Context, _ *llm.Request) (*llm.Res
 	}, nil
 }
 
-func newTestModel(t *testing.T) Model {
+func newTestModel(t *testing.T) *Model {
 	t.Helper()
 	cp := memory.NewCheckpoint()
 	a := agent.New(&testMockProvider{}, "test-model", "test prompt", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	return Model{
+	return &Model{
 		agent:      a,
 		checkpoint: cp,
 		ctx:        ctx,
