@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type stubTool struct {
@@ -24,12 +27,8 @@ func TestRegistry_RegisterAndGet(t *testing.T) {
 	r.Register(&stubTool{name: "Alpha"})
 	r.Register(&stubTool{name: "Beta"})
 
-	if got := r.Get("Alpha"); got == nil {
-		t.Fatal("expected to find Alpha")
-	}
-	if got := r.Get("Missing"); got != nil {
-		t.Fatal("expected nil for missing tool")
-	}
+	assert.NotNil(t, r.Get("Alpha"))
+	assert.Nil(t, r.Get("Missing"))
 }
 
 func TestRegistry_AllSorted(t *testing.T) {
@@ -39,24 +38,18 @@ func TestRegistry_AllSorted(t *testing.T) {
 	r.Register(&stubTool{name: "Mu"})
 
 	all := r.All()
-	if len(all) != 3 {
-		t.Fatalf("expected 3 tools, got %d", len(all))
-	}
-	if all[0].Name() != "Alpha" || all[1].Name() != "Mu" || all[2].Name() != "Zeta" {
-		t.Fatalf("expected sorted order, got %s %s %s", all[0].Name(), all[1].Name(), all[2].Name())
-	}
+	require.Len(t, all, 3)
+	assert.Equal(t, "Alpha", all[0].Name())
+	assert.Equal(t, "Mu", all[1].Name())
+	assert.Equal(t, "Zeta", all[2].Name())
 }
 
 func TestRegistry_DuplicatePanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic on duplicate registration")
-		}
-	}()
-
-	r := NewRegistry()
-	r.Register(&stubTool{name: "Same"})
-	r.Register(&stubTool{name: "Same"})
+	assert.Panics(t, func() {
+		r := NewRegistry()
+		r.Register(&stubTool{name: "Same"})
+		r.Register(&stubTool{name: "Same"})
+	})
 }
 
 func TestRegistry_Definitions(t *testing.T) {
@@ -64,13 +57,7 @@ func TestRegistry_Definitions(t *testing.T) {
 	r.Register(&stubTool{name: "Read", readOnly: true})
 
 	defs := r.Definitions()
-	if len(defs) != 1 {
-		t.Fatalf("expected 1 definition, got %d", len(defs))
-	}
-	if defs[0].Name != "Read" {
-		t.Fatalf("expected name Read, got %s", defs[0].Name)
-	}
-	if defs[0].Description != "stub: Read" {
-		t.Fatalf("unexpected description: %s", defs[0].Description)
-	}
+	require.Len(t, defs, 1)
+	assert.Equal(t, "Read", defs[0].Name)
+	assert.Equal(t, "stub: Read", defs[0].Description)
 }
