@@ -1,6 +1,8 @@
 package permission
 
-import "context"
+import (
+	"context"
+)
 
 // PromptFunc is a callback that asks the user for permission.
 // It receives context, the tool name, a description of the operation,

@@ -1,6 +1,8 @@
 package llm
 
-import "context"
+import (
+	"context"
+)
 
 // Provider abstracts LLM communication.
 // Different backends (Anthropic, OpenAI, Ollama, Mock) implement this interface.

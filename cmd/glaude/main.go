@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/prompt"
+	"github.com/xmh1011/glaude/internal/session"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
 	"github.com/xmh1011/glaude/internal/tool/bash"
@@ -72,7 +74,11 @@ func run() int {
 }
 
 func buildRootCmd(ctx context.Context) *cobra.Command {
-	var userPrompt string
+	var (
+		userPrompt    string
+		continueFlag  bool
+		resumeSession string
+	)
 
 	rootCmd := &cobra.Command{
 		Use:   "glaude",
@@ -97,22 +103,21 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := viper.GetString("model")
+			providerName := viper.GetString("provider")
+			cwd, _ := os.Getwd()
 
 			if userPrompt != "" {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
-				provider := llm.NewRetryProvider(
-				llm.NewAnthropicProvider(""), llm.DefaultRetryConfig(),
-			)
-			reg := buildRegistry(nil, provider, model)
+				provider := llm.NewProvider(providerName, model)
+				reg := buildRegistry(nil, provider, model)
 
 				// Load MCP servers from config
 				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
 				defer mcpMgr.Close()
 
 				// Load directive files (GLAUDE.md) from all tiers
-				cwd, _ := os.Getwd()
 				mem := &memory.FileStore{}
 				instructions, err := mem.Load(cwd)
 				if err != nil {
@@ -121,7 +126,15 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 				sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
 				a := agent.New(provider, model, sysPrompt, reg)
+
+				// Session persistence for one-shot mode
+				sessionID := uuid.New().String()
+				store := session.NewStore(cwd, sessionID)
+				defer store.Close()
+				a.SetSession(store)
+
 				text, err := a.Run(cmd.Context(), userPrompt)
+				a.RecordLastPrompt(userPrompt)
 
 				usage := a.TotalUsage()
 				telemetry.Log.
@@ -134,12 +147,11 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				}
 				return err
 			}
+
 			// Default: REPL mode
 			telemetry.Log.WithField("mode", "repl").Info("entering REPL")
 
-			provider := llm.NewRetryProvider(
-				llm.NewAnthropicProvider(""), llm.DefaultRetryConfig(),
-			)
+			provider := llm.NewProvider(providerName, model)
 			cp := memory.NewCheckpoint()
 			reg := buildRegistry(cp, provider, model)
 
@@ -147,7 +159,6 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
 			defer mcpMgr.Close()
 
-			cwd, _ := os.Getwd()
 			mem := &memory.FileStore{}
 			instructions, err := mem.Load(cwd)
 			if err != nil {
@@ -156,6 +167,45 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
 			a := agent.New(provider, model, sysPrompt, reg)
+
+			// Session persistence
+			sessionID := uuid.New().String()
+
+			// Handle --continue: resume most recent session
+			if continueFlag {
+				if info := session.MostRecentSession(cwd); info != nil {
+					sessionID = info.ID
+					entries, loadErr := session.LoadEntries(info.Path)
+					if loadErr == nil && len(entries) > 0 {
+						a.RestoreFrom(entries)
+						telemetry.Log.
+							WithField("session_id", sessionID).
+							WithField("messages", len(entries)).
+							Info("resumed session (--continue)")
+					}
+				}
+			}
+
+			// Handle --resume: resume specific session
+			if resumeSession != "" {
+				sessionID = resumeSession
+				path := session.SessionFilePath(cwd, resumeSession)
+				entries, loadErr := session.LoadEntries(path)
+				if loadErr != nil {
+					return fmt.Errorf("failed to load session %s: %w", resumeSession, loadErr)
+				}
+				if len(entries) > 0 {
+					a.RestoreFrom(entries)
+					telemetry.Log.
+						WithField("session_id", sessionID).
+						WithField("messages", len(entries)).
+						Info("resumed session (--resume)")
+				}
+			}
+
+			store := session.NewStore(cwd, sessionID)
+			defer store.Close()
+			a.SetSession(store)
 
 			m := ui.NewModel(a, cp, cmd.Context())
 			p := ui.NewProgram(m)
@@ -174,6 +224,8 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 	// Flags
 	rootCmd.Flags().StringVarP(&userPrompt, "prompt", "p", "", "Run a single prompt and exit")
+	rootCmd.Flags().BoolVarP(&continueFlag, "continue", "c", false, "Resume the most recent session")
+	rootCmd.Flags().StringVar(&resumeSession, "resume", "", "Resume a specific session by ID")
 
 	// Subcommands
 	rootCmd.AddCommand(buildVersionCmd())
