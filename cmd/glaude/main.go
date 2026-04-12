@@ -88,12 +88,14 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			telemetry.Close()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			model := viper.GetString("model")
+
 			if userPrompt != "" {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
-				reg := buildRegistry(nil, provider, "claude-sonnet-4-20250514")
+				reg := buildRegistry(nil, provider, model)
 
 				// Load MCP servers from config
 				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -108,7 +110,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				}
 
 				sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
-				a := agent.New(provider, "claude-sonnet-4-20250514", sysPrompt, reg)
+				a := agent.New(provider, model, sysPrompt, reg)
 				text, err := a.Run(cmd.Context(), userPrompt)
 
 				usage := a.TotalUsage()
@@ -127,7 +129,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			provider := llm.NewAnthropicProvider("")
 			cp := memory.NewCheckpoint()
-			reg := buildRegistry(cp, provider, "claude-sonnet-4-20250514")
+			reg := buildRegistry(cp, provider, model)
 
 			// Load MCP servers from config
 			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -141,7 +143,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			}
 
 			sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
-			a := agent.New(provider, "claude-sonnet-4-20250514", sysPrompt, reg)
+			a := agent.New(provider, model, sysPrompt, reg)
 
 			m := ui.NewModel(a, cp, cmd.Context())
 			p := ui.NewProgram(m)
