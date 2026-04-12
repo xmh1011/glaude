@@ -65,6 +65,96 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req *Request) (*Respon
 	return fromAnthropicMessage(msg), nil
 }
 
+// CompleteStream starts a streaming completion and delivers events via a channel.
+func (p *AnthropicProvider) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	params := anthropic.MessageNewParams{
+		Model:     req.Model,
+		MaxTokens: int64(req.MaxTokens),
+		Messages:  toAnthropicMessages(req.Messages),
+	}
+
+	if req.System != "" {
+		params.System = []anthropic.TextBlockParam{
+			{Text: req.System},
+		}
+	}
+
+	if len(req.Tools) > 0 {
+		params.Tools = toAnthropicTools(req.Tools)
+	}
+
+	telemetry.Log.
+		WithField("model", req.Model).
+		WithField("msg_count", len(req.Messages)).
+		Debug("anthropic: starting stream")
+
+	stream := p.client.Messages.NewStreaming(ctx, params)
+
+	ch := make(chan StreamEvent, 64)
+	go func() {
+		defer close(ch)
+		defer stream.Close()
+
+		for stream.Next() {
+			event := stream.Current()
+
+			switch variant := event.AsAny().(type) {
+			case anthropic.ContentBlockStartEvent:
+				// Check if this is a tool_use block
+				switch tb := variant.ContentBlock.AsAny().(type) {
+				case anthropic.ToolUseBlock:
+					ch <- StreamEvent{
+						Type:  EventToolUseStart,
+						ID:    tb.ID,
+						Name:  tb.Name,
+						Index: int(variant.Index),
+					}
+				}
+
+			case anthropic.ContentBlockDeltaEvent:
+				switch delta := variant.Delta.AsAny().(type) {
+				case anthropic.TextDelta:
+					ch <- StreamEvent{
+						Type:  EventTextDelta,
+						Text:  delta.Text,
+						Index: int(variant.Index),
+					}
+				case anthropic.InputJSONDelta:
+					ch <- StreamEvent{
+						Type:      EventInputJSONDelta,
+						InputJSON: delta.PartialJSON,
+						Index:     int(variant.Index),
+					}
+				}
+
+			case anthropic.ContentBlockStopEvent:
+				ch <- StreamEvent{
+					Type:  EventContentBlockStop,
+					Index: int(variant.Index),
+				}
+
+			case anthropic.MessageDeltaEvent:
+				ch <- StreamEvent{
+					Type:       EventMessageDelta,
+					StopReason: StopReason(variant.Delta.StopReason),
+					Usage: Usage{
+						OutputTokens: int(variant.Usage.OutputTokens),
+					},
+				}
+			}
+		}
+
+		if err := stream.Err(); err != nil {
+			ch <- StreamEvent{
+				Type:  EventError,
+				Error: fmt.Errorf("anthropic stream: %w", err),
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
 // toAnthropicMessages converts our unified messages to Anthropic SDK format.
 func toAnthropicMessages(msgs []Message) []anthropic.MessageParam {
 	out := make([]anthropic.MessageParam, 0, len(msgs))

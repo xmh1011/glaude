@@ -128,3 +128,28 @@ func (r *Response) ToolUseBlocks() []ContentBlock {
 	}
 	return blocks
 }
+
+// StreamEventType identifies the kind of stream event.
+type StreamEventType string
+
+const (
+	EventTextDelta        StreamEventType = "text_delta"
+	EventToolUseStart     StreamEventType = "tool_use_start"
+	EventInputJSONDelta   StreamEventType = "input_json_delta"
+	EventContentBlockStop StreamEventType = "content_block_stop"
+	EventMessageDelta     StreamEventType = "message_delta"
+	EventError            StreamEventType = "error"
+)
+
+// StreamEvent is a single event from a streaming completion.
+type StreamEvent struct {
+	Type       StreamEventType
+	Text       string     // for text_delta
+	ID         string     // for tool_use_start: tool call ID
+	Name       string     // for tool_use_start: tool name
+	InputJSON  string     // for input_json_delta: partial JSON fragment
+	StopReason StopReason // for message_delta
+	Usage      Usage      // for message_delta: final usage
+	Error      error      // for error events
+	Index      int        // content block index
+}

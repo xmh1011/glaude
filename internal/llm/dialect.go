@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/xmh1011/glaude/internal/telemetry"
 )
@@ -28,6 +29,16 @@ func (d *DialectFixer) Complete(ctx context.Context, req *Request) (*Response, e
 	}
 	d.fixResponse(resp)
 	return resp, nil
+}
+
+// CompleteStream passes through to the inner provider's streaming method.
+// JSON repair for tool inputs is handled at the Agent layer after fragments are assembled.
+func (d *DialectFixer) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	inner, ok := d.inner.(StreamingProvider)
+	if !ok {
+		return nil, fmt.Errorf("dialect: inner provider does not support streaming")
+	}
+	return inner.CompleteStream(ctx, req)
 }
 
 // fixResponse repairs malformed content blocks in-place.

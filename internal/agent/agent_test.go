@@ -151,3 +151,98 @@ func TestRun_ContextCancellation(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "canceled")
 }
+
+func TestRunStream_EndTurn(t *testing.T) {
+	mock := llm.NewMockProvider(
+		&llm.Response{
+			Content:    []llm.ContentBlock{llm.NewTextBlock("Hello, stream!")},
+			StopReason: llm.StopEndTurn,
+			Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+		},
+	)
+
+	a := New(mock, "mock-model", "You are helpful.", nil)
+
+	var deltas []string
+	cb := func(event llm.StreamEvent) {
+		if event.Type == llm.EventTextDelta {
+			deltas = append(deltas, event.Text)
+		}
+	}
+
+	text, err := a.RunStream(context.Background(), "Hi", cb)
+	require.NoError(t, err)
+	assert.Equal(t, "Hello, stream!", text)
+
+	// Verify callback was called with text deltas
+	require.Len(t, deltas, 1)
+	assert.Equal(t, "Hello, stream!", deltas[0])
+
+	// Verify usage tracking
+	usage := a.TotalUsage()
+	assert.Equal(t, 10, usage.InputTokens)
+	assert.Equal(t, 5, usage.OutputTokens)
+}
+
+func TestRunStream_ToolUse(t *testing.T) {
+	// Create a temp file to read via FileReadTool
+	tmp := t.TempDir()
+	testFile := filepath.Join(tmp, "stream.txt")
+	os.WriteFile(testFile, []byte("streamed file content\n"), 0644)
+
+	mock := llm.NewMockProvider(
+		&llm.Response{
+			Content: []llm.ContentBlock{
+				llm.NewTextBlock("Let me read that."),
+				{
+					Type:  llm.ContentToolUse,
+					ID:    "tool_01",
+					Name:  "Read",
+					Input: json.RawMessage(`{"file_path":"` + testFile + `"}`),
+				},
+			},
+			StopReason: llm.StopToolUse,
+			Usage:      llm.Usage{InputTokens: 20, OutputTokens: 15},
+		},
+		&llm.Response{
+			Content:    []llm.ContentBlock{llm.NewTextBlock("File contains: streamed file content")},
+			StopReason: llm.StopEndTurn,
+			Usage:      llm.Usage{InputTokens: 60, OutputTokens: 12},
+		},
+	)
+
+	reg := tool.NewRegistry()
+	reg.Register(&fileread.Tool{})
+
+	a := New(mock, "mock-model", "test", reg)
+
+	var toolStarts []string
+	cb := func(event llm.StreamEvent) {
+		if event.Type == llm.EventToolUseStart {
+			toolStarts = append(toolStarts, event.Name)
+		}
+	}
+
+	text, err := a.RunStream(context.Background(), "read the file", cb)
+	require.NoError(t, err)
+	assert.Contains(t, text, "streamed file content")
+
+	// Verify tool start callback was called
+	require.Len(t, toolStarts, 1)
+	assert.Equal(t, "Read", toolStarts[0])
+}
+
+func TestRunStream_NilCallback(t *testing.T) {
+	mock := llm.NewMockProvider(
+		&llm.Response{
+			Content:    []llm.ContentBlock{llm.NewTextBlock("OK")},
+			StopReason: llm.StopEndTurn,
+			Usage:      llm.Usage{InputTokens: 5, OutputTokens: 1},
+		},
+	)
+
+	a := New(mock, "mock-model", "test", nil)
+	text, err := a.RunStream(context.Background(), "Hi", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "OK", text)
+}

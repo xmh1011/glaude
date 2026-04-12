@@ -65,6 +65,115 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req *Request) (*Response,
 	return p.fromChatCompletion(resp), nil
 }
 
+// CompleteStream starts a streaming completion and delivers events via a channel.
+func (p *OpenAIProvider) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	msgs := p.buildMessages(req)
+	tools := p.buildTools(req.Tools)
+
+	params := openai.ChatCompletionNewParams{
+		Model:               req.Model,
+		Messages:            msgs,
+		MaxCompletionTokens: openai.Int(int64(req.MaxTokens)),
+	}
+	if len(tools) > 0 {
+		params.Tools = tools
+	}
+
+	telemetry.Log.
+		WithField("model", req.Model).
+		WithField("base_url", p.baseURL).
+		WithField("msg_count", len(msgs)).
+		Debug("openai: starting stream")
+
+	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
+
+	ch := make(chan StreamEvent, 64)
+	go func() {
+		defer close(ch)
+		defer stream.Close()
+
+		acc := openai.ChatCompletionAccumulator{}
+		// Track which tool call indices we've already seen start for
+		seenToolStarts := map[int64]bool{}
+
+		for stream.Next() {
+			chunk := stream.Current()
+			acc.AddChunk(chunk)
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			choice := chunk.Choices[0]
+
+			// Text delta
+			if choice.Delta.Content != "" {
+				ch <- StreamEvent{
+					Type: EventTextDelta,
+					Text: choice.Delta.Content,
+				}
+			}
+
+			// Tool call deltas
+			for _, tc := range choice.Delta.ToolCalls {
+				idx := tc.Index
+				if !seenToolStarts[idx] && (tc.ID != "" || tc.Function.Name != "") {
+					seenToolStarts[idx] = true
+					ch <- StreamEvent{
+						Type:  EventToolUseStart,
+						ID:    tc.ID,
+						Name:  tc.Function.Name,
+						Index: int(idx),
+					}
+				}
+				if tc.Function.Arguments != "" {
+					ch <- StreamEvent{
+						Type:      EventInputJSONDelta,
+						InputJSON: tc.Function.Arguments,
+						Index:     int(idx),
+					}
+				}
+			}
+
+			// Check if content just finished
+			if _, ok := acc.JustFinishedContent(); ok {
+				ch <- StreamEvent{
+					Type:  EventContentBlockStop,
+					Index: 0,
+				}
+			}
+
+			// Check if a tool call just finished
+			if tc, ok := acc.JustFinishedToolCall(); ok {
+				ch <- StreamEvent{
+					Type:  EventContentBlockStop,
+					Index: tc.Index,
+				}
+			}
+
+			// Finish reason
+			if choice.FinishReason != "" {
+				ch <- StreamEvent{
+					Type:       EventMessageDelta,
+					StopReason: mapFinishReason(string(choice.FinishReason)),
+					Usage: Usage{
+						InputTokens:  int(chunk.Usage.PromptTokens),
+						OutputTokens: int(chunk.Usage.CompletionTokens),
+					},
+				}
+			}
+		}
+
+		if err := stream.Err(); err != nil {
+			ch <- StreamEvent{
+				Type:  EventError,
+				Error: fmt.Errorf("openai stream: %w", err),
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
 // buildMessages converts our unified messages to OpenAI SDK message params.
 func (p *OpenAIProvider) buildMessages(req *Request) []openai.ChatCompletionMessageParamUnion {
 	var msgs []openai.ChatCompletionMessageParamUnion
