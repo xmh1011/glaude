@@ -125,7 +125,7 @@ func TestModel_PermissionPrompt_Approve(t *testing.T) {
 
 	// Simulate pressing 'y'
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	updated := updatedModel.(Model)
+	updated := updatedModel.(*Model)
 	assert.False(t, updated.permPrompt)
 	assert.Nil(t, updated.permRequest)
 
@@ -150,7 +150,7 @@ func TestModel_PermissionPrompt_Deny(t *testing.T) {
 
 	// Simulate pressing 'n'
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	updated := updatedModel.(Model)
+	updated := updatedModel.(*Model)
 	assert.False(t, updated.permPrompt)
 
 	got := <-responseCh
@@ -165,14 +165,14 @@ func TestModel_PermissionPrompt_IgnoresOtherKeys(t *testing.T) {
 
 	m.permPrompt = true
 	m.permRequest = &permissionRequestMsg{
-		toolName:   "Bash",
+		toolName:    "Bash",
 		description: "test",
-		responseCh: make(chan bool, 1),
+		responseCh:  make(chan bool, 1),
 	}
 
 	// Press 'x' — should be ignored
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	updated := updatedModel.(Model)
+	updated := updatedModel.(*Model)
 	assert.True(t, updated.permPrompt, "should still be in permission prompt")
 }
 

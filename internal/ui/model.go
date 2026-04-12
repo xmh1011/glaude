@@ -90,11 +90,12 @@ type Model struct {
 	streamText string // accumulated text from stream deltas
 
 	// Permission prompt state
-	permPrompt  bool                 // true when showing permission prompt
+	permPrompt  bool                  // true when showing permission prompt
 	permRequest *permissionRequestMsg // current permission request
 
-	// Program reference for streaming callbacks (shared pointer for bubbletea copy safety)
-	programRef *programRef
+	// Program reference for streaming callbacks.
+	// Since Model is used as a pointer, this can be a direct *tea.Program.
+	program *tea.Program
 
 	// Context for cancelling agent work
 	ctx    context.Context
@@ -102,14 +103,23 @@ type Model struct {
 }
 
 // NewModel creates a new REPL model.
-func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) Model {
-	// Text input area
+func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model {
+	// Text input area — clean prompt style (❯) without borders
 	ta := textarea.New()
-	ta.Placeholder = "Type your message... (Enter to send, Ctrl+D to exit)"
+	ta.Placeholder = "Type your message..."
 	ta.Focus()
 	ta.CharLimit = 0 // unlimited
-	ta.SetHeight(3)
+	ta.SetHeight(1)
 	ta.ShowLineNumbers = false
+	ta.Prompt = "❯ "
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.FocusedStyle.Base = lipgloss.NewStyle()
+	ta.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(dimColor)
+	ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+	ta.BlurredStyle.CursorLine = lipgloss.NewStyle()
+	ta.BlurredStyle.Base = lipgloss.NewStyle()
+	ta.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(dimColor)
+	ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(dimColor)
 
 	// Spinner for waiting state
 	sp := spinner.New()
@@ -124,36 +134,25 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) Model 
 
 	childCtx, cancel := context.WithCancel(ctx)
 
-	return Model{
+	return &Model{
 		agent:      a,
 		checkpoint: cp,
 		textarea:   ta,
 		spinner:    sp,
 		renderer:   r,
-		programRef: &programRef{},
 		ctx:        childCtx,
 		cancel:     cancel,
 	}
 }
 
-// programRef holds a shared reference to *tea.Program. Since bubbletea copies
-// Model values, a direct *tea.Program field would be lost. Using a shared
-// pointer ensures both the original and copied Model see the same Program.
-type programRef struct {
-	p *tea.Program
-}
-
 // SetProgram sets the tea.Program reference needed for streaming callbacks.
 // Must be called after NewProgram creates the program.
 func (m *Model) SetProgram(p *tea.Program) {
-	if m.programRef == nil {
-		m.programRef = &programRef{}
-	}
-	m.programRef.p = p
+	m.program = p
 }
 
 // Init implements tea.Model.
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		textarea.Blink,
 		m.spinner.Tick,
@@ -161,7 +160,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -348,7 +347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handlePermissionKey processes y/n input during a permission prompt.
-func (m Model) handlePermissionKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+func (m *Model) handlePermissionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		m.messages = append(m.messages, displayMessage{
@@ -375,7 +374,7 @@ func (m Model) handlePermissionKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 // View implements tea.Model.
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.quitting {
 		return "Goodbye!\n"
 	}
@@ -414,10 +413,12 @@ func (m Model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Input area
+	// Input area with dividers
 	if !m.waiting && !m.permPrompt {
+		divider := dividerStyle.Render(strings.Repeat("─", max(m.width, 40)))
+		b.WriteString(divider + "\n")
 		b.WriteString(m.textarea.View())
-		b.WriteString("\n")
+		b.WriteString("\n" + divider + "\n")
 	}
 
 	// Status bar
@@ -427,7 +428,7 @@ func (m Model) View() string {
 }
 
 // renderPermissionPrompt renders the permission confirmation dialog.
-func (m Model) renderPermissionPrompt() string {
+func (m *Model) renderPermissionPrompt() string {
 	req := m.permRequest
 	var b strings.Builder
 
@@ -477,7 +478,7 @@ func (m Model) renderPermissionPrompt() string {
 }
 
 // renderMessage renders a single message with appropriate styling.
-func (m Model) renderMessage(msg displayMessage) string {
+func (m *Model) renderMessage(msg displayMessage) string {
 	switch msg.role {
 	case llm.RoleUser:
 		label := userLabelStyle.Render("You")
@@ -499,7 +500,7 @@ func (m Model) renderMessage(msg displayMessage) string {
 }
 
 // renderStatusBar renders the bottom status bar with token budget indicator.
-func (m Model) renderStatusBar() string {
+func (m *Model) renderStatusBar() string {
 	usage := m.agent.TotalUsage()
 	budget := m.agent.Budget()
 
@@ -531,14 +532,13 @@ func (m Model) renderStatusBar() string {
 
 // runAgent sends the prompt to the agent in a goroutine and returns a Cmd.
 // Uses streaming when a *tea.Program reference is available for real-time updates.
-func (m Model) runAgent(prompt string) tea.Cmd {
+func (m *Model) runAgent(prompt string) tea.Cmd {
 	ctx := m.ctx
 	a := m.agent
-	ref := m.programRef
+	p := m.program
 	return func() tea.Msg {
-		if ref != nil && ref.p != nil {
+		if p != nil {
 			// Streaming mode: deliver text deltas via p.Send()
-			p := ref.p
 			cb := func(event llm.StreamEvent) {
 				switch event.Type {
 				case llm.EventTextDelta:

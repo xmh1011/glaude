@@ -14,7 +14,7 @@ import (
 type slashCommand struct {
 	name        string
 	description string
-	handler     func(m Model, args string) (Model, tea.Cmd)
+	handler     func(m *Model, args string) (*Model, tea.Cmd)
 }
 
 // commands returns all registered slash commands.
@@ -31,7 +31,7 @@ func commands() []slashCommand {
 }
 
 // handleSlashCommand parses and dispatches a slash command.
-func (m Model) handleSlashCommand(input string) (Model, tea.Cmd) {
+func (m *Model) handleSlashCommand(input string) (tea.Model, tea.Cmd) {
 	parts := strings.SplitN(strings.TrimPrefix(input, "/"), " ", 2)
 	name := strings.ToLower(parts[0])
 	args := ""
@@ -41,7 +41,8 @@ func (m Model) handleSlashCommand(input string) (Model, tea.Cmd) {
 
 	for _, cmd := range commands() {
 		if cmd.name == name {
-			return cmd.handler(m, args)
+			result, teaCmd := cmd.handler(m, args)
+			return result, teaCmd
 		}
 	}
 
@@ -53,13 +54,13 @@ func (m Model) handleSlashCommand(input string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func cmdExit(m Model, _ string) (Model, tea.Cmd) {
+func cmdExit(m *Model, _ string) (*Model, tea.Cmd) {
 	m.quitting = true
 	m.cancel()
 	return m, tea.Quit
 }
 
-func cmdClear(m Model, _ string) (Model, tea.Cmd) {
+func cmdClear(m *Model, _ string) (*Model, tea.Cmd) {
 	m.messages = nil
 	m.err = nil
 	m.messages = append(m.messages, displayMessage{
@@ -69,7 +70,7 @@ func cmdClear(m Model, _ string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func cmdUndo(m Model, _ string) (Model, tea.Cmd) {
+func cmdUndo(m *Model, _ string) (*Model, tea.Cmd) {
 	if m.checkpoint == nil {
 		m.messages = append(m.messages, displayMessage{
 			role: llm.RoleAssistant,
@@ -94,7 +95,7 @@ func cmdUndo(m Model, _ string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func cmdContext(m Model, _ string) (Model, tea.Cmd) {
+func cmdContext(m *Model, _ string) (*Model, tea.Cmd) {
 	usage := m.agent.TotalUsage()
 	msgCount := len(m.agent.Messages())
 	undoCount := 0
@@ -119,7 +120,7 @@ func cmdContext(m Model, _ string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func cmdHelp(m Model, _ string) (Model, tea.Cmd) {
+func cmdHelp(m *Model, _ string) (*Model, tea.Cmd) {
 	var b strings.Builder
 	b.WriteString("**Available Commands**\n\n")
 	for _, cmd := range commands() {
@@ -138,7 +139,7 @@ func cmdHelp(m Model, _ string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func cmdMode(m Model, args string) (Model, tea.Cmd) {
+func cmdMode(m *Model, args string) (*Model, tea.Cmd) {
 	gate := m.agent.Gate()
 	if gate == nil {
 		m.messages = append(m.messages, displayMessage{
