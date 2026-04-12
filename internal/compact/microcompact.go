@@ -1,7 +1,7 @@
 package compact
 
 import (
-	"glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/llm"
 )
 
 // MicroCompact configuration.

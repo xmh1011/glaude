@@ -17,9 +17,9 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
-	"glaude/internal/agent"
-	"glaude/internal/llm"
-	"glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/agent"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/memory"
 )
 
 // displayMessage is a rendered message for display in the UI.

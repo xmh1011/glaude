@@ -14,14 +14,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"glaude/internal/agent"
-	"glaude/internal/config"
-	"glaude/internal/llm"
-	"glaude/internal/memory"
-	"glaude/internal/prompt"
-	"glaude/internal/telemetry"
-	"glaude/internal/tool"
-	"glaude/internal/ui"
+	"github.com/xmh1011/glaude/internal/agent"
+	"github.com/xmh1011/glaude/internal/config"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/prompt"
+	"github.com/xmh1011/glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/ui"
 )
 
 // version is set at build time via -ldflags.

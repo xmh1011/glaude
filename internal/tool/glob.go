@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/telemetry"
 )
 
 const globMaxResults = 100

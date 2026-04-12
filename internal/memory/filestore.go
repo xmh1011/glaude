@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"glaude/internal/config"
+	"github.com/xmh1011/glaude/internal/config"
 )
 
 // FileStore implements Store using local Markdown files.

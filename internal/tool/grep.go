@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/telemetry"
 )
 
 const grepMaxResults = 250

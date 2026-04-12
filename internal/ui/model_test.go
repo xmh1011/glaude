@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"glaude/internal/agent"
-	"glaude/internal/llm"
-	"glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/agent"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/memory"
 )
 
 func TestNewModel(t *testing.T) {

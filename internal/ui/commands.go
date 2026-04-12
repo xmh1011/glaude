@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/llm"
 )
 
 // slashCommand defines a registered slash command.
