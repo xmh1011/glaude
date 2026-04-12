@@ -25,7 +25,9 @@ Claude Code 运行在两种模式之一，由 `bun:bundle` 特性标志控制：
 
 ## 2. 架构：协调者与工作线程 (Worker)
 
-![03 coordinator 1](../assets/03-coordinator-1.svg)
+<p align="center">
+  <img src="../assets/03-coordinator-1.svg" width="600">
+</p>
 
 ### 核心原则：完全的上下文隔离
 **Worker 无法看到协调者的对话历史。** 每个 Worker 启动时都是零上下文的。协调者必须编写自包含的 Prompt，包括 Worker 所需的一切：文件路径、行号、错误信息以及“完成”的标准。

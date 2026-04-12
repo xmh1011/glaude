@@ -107,7 +107,7 @@ Claude Code 的强大不是来自某个杀手锏功能，而是**六大支柱协
 | 11 | [压缩系统](../11-compact-system.md) | 4 层压缩（微 → 截断 → 自动 → 紧急），电路断路器，Prompt Cache 共享 | 372 |
 | 12 | [启动与引导](../12-startup-bootstrap.md) | Import-Gap 并行，快速路径分发，记忆化初始化，`state.ts` 叶模块模式 | 393 |
 | 13 | [桥接系统](../13-bridge-system.md) | CLI ↔ IDE WebSocket 桥接，3 种 Spawn 模式，Chrome 扩展集成 | 346 |
-| 14 | [UI 与状态管理](../14-ui-state-management.md) | Fork Ink + React 19，终端中的 W3C 事件模型，35 行 Store，Vim 状态机 | 980 |
+| 14 | [UI 与状态管理](../14-ui-state.md) | Fork Ink + React 19，终端中的 W3C 事件模型，35 行 Store，Vim 状态机 | 980 |
 | 15 | [服务层与 API](../15-services-api-layer.md) | queryModel() 700 行核心，多提供商工厂，SSE 流管道，重试引擎 | 691 |
 | 16 | [基础设施与配置](../16-infrastructure-config.md) | Bootstrap 单例，5 层设置合并，安全存储，CLAUDE.md 记忆系统 | 876 |
 
@@ -117,7 +117,9 @@ Claude Code 的强大不是来自某个杀手锏功能，而是**六大支柱协
 
 ## §3 阅读顺序：六条认知路径
 
-![00 overview](../assets/00-overview.svg)
+<p align="center">
+  <img src="../assets/00-overview.svg" width="480">
+</p>
 
 | 路径 | 名称 | 适合人群 | 篇章 |
 |------|------|----------|------|
@@ -270,7 +272,7 @@ Claude Code 不是"发送提示，得到回答"，而是一个 **while(true) 循
 
 **Fail-Closed（安全优先）：** Bash 解析错误 → 拒绝执行；权限超时 → 默认拒绝。**Fail-Open（可用性优先）：** 策略加载失败 → 允许所有；远程配置超时 → 用本地缓存；GrowthBook 不可用 → 用默认值。边界清晰：涉及用户数据/系统访问用 fail-closed，涉及配置/外部服务用 fail-open。
 
-> → 深度解析: [EP12: 启动](./12-startup-bootstrap) | [EP14: UI 与状态](./14-ui-state-management) | [EP16: 基础设施](./16-infrastructure-config)
+> → 深度解析: [EP12: 启动](./12-startup-bootstrap) | [EP14: UI 与状态](./14-ui-state) | [EP16: 基础设施](./16-infrastructure-config)
 
 ---
 

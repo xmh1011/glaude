@@ -10,7 +10,9 @@
 
 ## 架构概览
 
-![12 startup bootstrap](../assets/12-startup-bootstrap.svg)
+<p align="center">
+  <img src="../assets/12-startup-bootstrap.svg" width="720">
+</p>
 
 ---
 

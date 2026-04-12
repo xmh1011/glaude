@@ -12,7 +12,9 @@
 
 ## 架构概览
 
-![08 agent swarms 1](../assets/08-agent-swarms-1.svg)
+<p align="center">
+  <img src="../assets/08-agent-swarms-1.svg" width="640">
+</p>
 
 ---
 

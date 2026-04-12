@@ -11,7 +11,9 @@
 
 ## 架构概览
 
-![06 bash engine 1](../assets/06-bash-engine-1.svg)
+<p align="center">
+  <img src="../assets/06-bash-engine-1.svg" width="720">
+</p>
 
 ---
 
@@ -185,7 +187,9 @@ source /tmp/snapshot.sh 2>/dev/null || true
 
 ## 7. 完整执行流程
 
-![06 bash engine 3](../assets/06-bash-engine-3.svg)
+<p align="center">
+  <img src="../assets/06-bash-engine-3.svg" width="680">
+</p>
 
 ---
 
