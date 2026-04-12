@@ -39,6 +39,7 @@ func Init() error {
 	viper.SetDefault("model", "claude-sonnet-4-20250514")
 	viper.SetDefault("log_dir", filepath.Join(globalDir, "logs"))
 	viper.SetDefault("log_level", "info")
+	viper.SetDefault("permission_mode", "default")
 
 	// Layer 1: global config ~/.glaude/settings.json
 	viper.SetConfigFile(filepath.Join(globalDir, "settings.json"))

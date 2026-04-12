@@ -7,10 +7,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/xmh1011/glaude/internal/compact"
 	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
 )
@@ -27,6 +29,7 @@ type Agent struct {
 	budget        *compact.Budget
 	counter       *compact.TokenCounter
 	autoCompactor *compact.AutoCompactor
+	gate          *permission.Gate
 }
 
 // New creates an Agent bound to the given provider and model.
@@ -41,7 +44,19 @@ func New(provider llm.Provider, model, systemPrompt string, registry *tool.Regis
 		budget:        compact.NewBudget(compact.DefaultContextWindow, compact.ResponseReserve),
 		counter:       compact.NewTokenCounter(),
 		autoCompactor: compact.NewAutoCompactor(provider, model),
+		gate:          permission.NewGate(permission.NewChecker(), nil),
 	}
+}
+
+// SetGate replaces the permission gate. Use this to wire in an interactive
+// prompt callback from the UI layer.
+func (a *Agent) SetGate(g *permission.Gate) {
+	a.gate = g
+}
+
+// Gate returns the current permission gate.
+func (a *Agent) Gate() *permission.Gate {
+	return a.gate
 }
 
 // Run executes the agent loop for a single user prompt.
@@ -149,6 +164,24 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		return fmt.Sprintf("Error: tool %q not found", tb.Name), true
 	}
 
+	// Permission gate: check before executing
+	if a.gate != nil {
+		bashCmd := extractBashCommand(tb)
+		result := a.gate.Evaluate(ctx, tb.Name, t.IsReadOnly(), bashCmd)
+
+		telemetry.Log.
+			WithField("tool", tb.Name).
+			WithField("decision", result.Decision.String()).
+			WithField("reason", result.Reason).
+			Debug("permission check")
+
+		if result.Decision == permission.Deny {
+			msg := fmt.Sprintf("Permission denied: %s", result.Reason)
+			telemetry.Log.WithField("tool", tb.Name).Info(msg)
+			return msg, true
+		}
+	}
+
 	telemetry.Log.
 		WithField("tool", tb.Name).
 		WithField("tool_use_id", tb.ID).
@@ -172,6 +205,20 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		Debug("tool execution success")
 
 	return result, false
+}
+
+// extractBashCommand extracts the "command" field from a Bash tool's input JSON.
+func extractBashCommand(tb llm.ContentBlock) string {
+	if tb.Name != "Bash" {
+		return ""
+	}
+	var parsed struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(tb.Input, &parsed); err != nil {
+		return ""
+	}
+	return parsed.Command
 }
 
 // TotalUsage returns the cumulative token usage across all iterations.

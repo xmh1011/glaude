@@ -12,6 +12,7 @@ import (
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/permission"
 )
 
 func TestHandleSlashCommand_Help(t *testing.T) {
@@ -108,6 +109,43 @@ func TestHandleSlashCommand_Quit(t *testing.T) {
 	m, cmd := m.handleSlashCommand("/quit")
 	assert.True(t, m.quitting)
 	assert.NotNil(t, cmd)
+}
+
+func TestHandleSlashCommand_Mode_Show(t *testing.T) {
+	m := newTestModel(t)
+	// Set up a gate on the agent so /mode can read it
+	perm := permission.NewGate(permission.NewCheckerWithMode(permission.ModeDefault), nil)
+	m.agent.SetGate(perm)
+
+	m, _ = m.handleSlashCommand("/mode")
+	require.NotEmpty(t, m.messages)
+	last := m.messages[len(m.messages)-1]
+	assert.Contains(t, last.text, "default")
+	assert.Contains(t, last.text, "auto-edit")
+}
+
+func TestHandleSlashCommand_Mode_Set(t *testing.T) {
+	m := newTestModel(t)
+	perm := permission.NewGate(permission.NewCheckerWithMode(permission.ModeDefault), nil)
+	m.agent.SetGate(perm)
+
+	m, _ = m.handleSlashCommand("/mode auto-edit")
+	require.NotEmpty(t, m.messages)
+	last := m.messages[len(m.messages)-1]
+	assert.Contains(t, last.text, "auto-edit")
+
+	// Verify mode actually changed
+	assert.Equal(t, permission.ModeAutoEdit, m.agent.Gate().Checker().Mode())
+}
+
+func TestHandleSlashCommand_Mode_NoGate(t *testing.T) {
+	m := newTestModel(t)
+	m.agent.SetGate(nil) // no gate
+
+	m, _ = m.handleSlashCommand("/mode")
+	require.NotEmpty(t, m.messages)
+	last := m.messages[len(m.messages)-1]
+	assert.Contains(t, last.text, "not configured")
 }
 
 // --- helpers ---
