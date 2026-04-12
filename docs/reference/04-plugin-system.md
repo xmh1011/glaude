@@ -12,7 +12,9 @@ Claude Code 在底层隐藏了一个完整的插件生态系统 —— 包括插
 
 ## 1. 插件架构概览
 
-![04 plugin system 1](../assets/04-plugin-system-1.svg)
+<p align="center">
+  <img src="../assets/04-plugin-system-1.svg" width="680">
+</p>
 
 ---
 

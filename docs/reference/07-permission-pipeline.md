@@ -12,7 +12,9 @@
 
 ## 架构概览
 
-![07 permission pipeline 1](../assets/07-permission-pipeline-1.svg)
+<p align="center">
+  <img src="../assets/07-permission-pipeline-1.svg" width="640">
+</p>
 
 ---
 
@@ -59,7 +61,9 @@
 
 ## 2. 六种权限模式
 
-![07 permission pipeline 2](../assets/07-permission-pipeline-2.svg)
+<p align="center">
+  <img src="../assets/07-permission-pipeline-2.svg" width="560">
+</p>
 
 | 模式 | `ask` 变为 | 安全检查 | 说明 |
 |------|-----------|---------|------|
@@ -121,7 +125,9 @@ Agent(Explore)            → 匹配特定代理类型
 
 ### 第三级：两阶段 XML 分类器
 
-![07 permission pipeline 3](../assets/07-permission-pipeline-3.svg)
+<p align="center">
+  <img src="../assets/07-permission-pipeline-3.svg" width="640">
+</p>
 
 分类器使用单独的 LLM API 调用（`sideQuery`）和专用系统提示词：
 
@@ -220,7 +226,9 @@ export const DENIAL_LIMITS = {
 
 ## 8. 完整决策流程
 
-![07 permission pipeline 4](../assets/07-permission-pipeline-4.svg)
+<p align="center">
+  <img src="../assets/07-permission-pipeline-4.svg" width="720">
+</p>
 
 ---
 
