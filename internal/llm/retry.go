@@ -102,6 +102,17 @@ func (r *RetryProvider) Complete(ctx context.Context, req *Request) (*Response, 
 	return nil, fmt.Errorf("max retries (%d) exhausted: %w", r.config.MaxRetries, lastErr)
 }
 
+// CompleteStream passes through to the inner provider's streaming method.
+// Streaming calls are not retried—once a connection is established, the
+// stream semantics differ from request-response.
+func (r *RetryProvider) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	inner, ok := r.inner.(StreamingProvider)
+	if !ok {
+		return nil, fmt.Errorf("retry: inner provider does not support streaming")
+	}
+	return inner.CompleteStream(ctx, req)
+}
+
 // backoffDelay calculates exponential backoff with jitter for the given attempt.
 // Formula: min(base * 2^attempt + jitter, maxDelay)
 func (r *RetryProvider) backoffDelay(attempt int) time.Duration {

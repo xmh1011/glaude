@@ -35,7 +35,25 @@ type displayMessage struct {
 }
 
 // agentDoneMsg signals that the agent has finished processing.
+// Kept for backwards compatibility with non-streaming code paths.
 type agentDoneMsg struct {
+	text string
+	err  error
+}
+
+// streamTextMsg delivers a text delta for real-time rendering.
+type streamTextMsg struct {
+	text string
+}
+
+// streamToolStartMsg signals that a tool call is starting.
+type streamToolStartMsg struct {
+	toolName string
+	toolID   string
+}
+
+// streamDoneMsg signals the stream has completed for this turn.
+type streamDoneMsg struct {
 	text string
 	err  error
 }
@@ -67,9 +85,16 @@ type Model struct {
 	height   int   // terminal height
 	quitting bool
 
+	// Streaming state
+	streaming  bool   // true while receiving stream events
+	streamText string // accumulated text from stream deltas
+
 	// Permission prompt state
-	permPrompt   bool              // true when showing permission prompt
-	permRequest  *permissionRequestMsg // current permission request
+	permPrompt  bool                 // true when showing permission prompt
+	permRequest *permissionRequestMsg // current permission request
+
+	// Program reference for streaming callbacks (shared pointer for bubbletea copy safety)
+	programRef *programRef
 
 	// Context for cancelling agent work
 	ctx    context.Context
@@ -105,9 +130,26 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) Model 
 		textarea:   ta,
 		spinner:    sp,
 		renderer:   r,
+		programRef: &programRef{},
 		ctx:        childCtx,
 		cancel:     cancel,
 	}
+}
+
+// programRef holds a shared reference to *tea.Program. Since bubbletea copies
+// Model values, a direct *tea.Program field would be lost. Using a shared
+// pointer ensures both the original and copied Model see the same Program.
+type programRef struct {
+	p *tea.Program
+}
+
+// SetProgram sets the tea.Program reference needed for streaming callbacks.
+// Must be called after NewProgram creates the program.
+func (m *Model) SetProgram(p *tea.Program) {
+	if m.programRef == nil {
+		m.programRef = &programRef{}
+	}
+	m.programRef.p = p
 }
 
 // Init implements tea.Model.
@@ -140,6 +182,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Cancel current agent work
 				m.cancel()
 				m.waiting = false
+				m.streaming = false
+				m.streamText = ""
 				m.permPrompt = false
 				m.permRequest = nil
 				m.messages = append(m.messages, displayMessage{
@@ -184,6 +228,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				text: input,
 			})
 			m.waiting = true
+			m.streaming = true
+			m.streamText = ""
 			m.err = nil
 
 			return m, m.runAgent(input)
@@ -205,8 +251,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.permRequest = &msg
 		return m, nil
 
-	case agentDoneMsg:
+	case streamTextMsg:
+		m.streamText += msg.text
+		return m, nil
+
+	case streamToolStartMsg:
+		// Finalize any accumulated stream text as a message
+		if m.streamText != "" {
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: m.streamText,
+			})
+			m.streamText = ""
+		}
+		m.streaming = false // switch to spinner during tool execution
+		m.messages = append(m.messages, displayMessage{
+			role:    llm.RoleAssistant,
+			toolUse: msg.toolName,
+			text:    fmt.Sprintf("Using tool: **%s**", msg.toolName),
+		})
+		return m, nil
+
+	case streamDoneMsg:
 		m.waiting = false
+		m.streaming = false
+		m.permPrompt = false
+		m.permRequest = nil
+		if msg.err != nil {
+			m.err = msg.err
+			// If there was partial stream text, include it
+			if m.streamText != "" {
+				m.messages = append(m.messages, displayMessage{
+					role: llm.RoleAssistant,
+					text: m.streamText,
+				})
+				m.streamText = ""
+			}
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: fmt.Sprintf("Error: %v", msg.err),
+			})
+		} else if msg.text != "" {
+			// The final text supersedes any streamed text
+			m.streamText = ""
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: msg.text,
+			})
+		} else if m.streamText != "" {
+			// No final text but we accumulated stream deltas
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: m.streamText,
+			})
+			m.streamText = ""
+		}
+		return m, nil
+
+	case agentDoneMsg:
+		// Legacy non-streaming path
+		m.waiting = false
+		m.streaming = false
+		m.streamText = ""
 		m.permPrompt = false
 		m.permRequest = nil
 		if msg.err != nil {
@@ -291,8 +397,19 @@ func (m Model) View() string {
 	if m.permPrompt && m.permRequest != nil {
 		b.WriteString(m.renderPermissionPrompt())
 		b.WriteString("\n")
+	} else if m.streaming && m.streamText != "" {
+		// Render streaming text with blinking cursor
+		label := assistantLabelStyle.Render("Assistant")
+		rendered := m.streamText
+		if m.renderer != nil {
+			if out, err := m.renderer.Render(m.streamText); err == nil {
+				rendered = strings.TrimSpace(out)
+			}
+		}
+		cursor := lipgloss.NewStyle().Foreground(accentColor).Render("▌")
+		b.WriteString(label + "\n" + assistantMsgStyle.Render(rendered+cursor) + "\n\n")
 	} else if m.waiting {
-		// Spinner
+		// Spinner (waiting for first token or tool execution)
 		b.WriteString(spinnerStyle.Render(m.spinner.View() + " Thinking..."))
 		b.WriteString("\n\n")
 	}
@@ -413,10 +530,27 @@ func (m Model) renderStatusBar() string {
 }
 
 // runAgent sends the prompt to the agent in a goroutine and returns a Cmd.
+// Uses streaming when a *tea.Program reference is available for real-time updates.
 func (m Model) runAgent(prompt string) tea.Cmd {
 	ctx := m.ctx
 	a := m.agent
+	ref := m.programRef
 	return func() tea.Msg {
+		if ref != nil && ref.p != nil {
+			// Streaming mode: deliver text deltas via p.Send()
+			p := ref.p
+			cb := func(event llm.StreamEvent) {
+				switch event.Type {
+				case llm.EventTextDelta:
+					p.Send(streamTextMsg{text: event.Text})
+				case llm.EventToolUseStart:
+					p.Send(streamToolStartMsg{toolName: event.Name, toolID: event.ID})
+				}
+			}
+			text, err := a.RunStream(ctx, prompt, cb)
+			return streamDoneMsg{text: text, err: err}
+		}
+		// Fallback: synchronous mode (no program reference)
 		text, err := a.Run(ctx, prompt)
 		return agentDoneMsg{text: text, err: err}
 	}

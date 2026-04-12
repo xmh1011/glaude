@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -187,6 +188,208 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return resp.TextContent(), fmt.Errorf("unexpected stop reason: %s", resp.StopReason)
 		}
 	}
+}
+
+// StreamCallback receives streaming events for real-time UI updates.
+type StreamCallback func(event llm.StreamEvent)
+
+// RunStream executes the agent loop with streaming output.
+// Text deltas are delivered via callback in real-time. Tool execution
+// still happens synchronously after the stream completes each turn.
+// If the provider does not support streaming, it falls back to synchronous mode.
+func (a *Agent) RunStream(ctx context.Context, prompt string, cb StreamCallback) (string, error) {
+	userMsg := llm.Message{
+		Role:    llm.RoleUser,
+		Content: []llm.ContentBlock{llm.NewTextBlock(prompt)},
+	}
+	a.messages = append(a.messages, userMsg)
+	a.recordEntry("user", &userMsg)
+
+	telemetry.Log.WithField("prompt_len", len(prompt)).Info("agent stream loop started")
+
+	// Check if provider supports streaming
+	streamProvider, canStream := a.provider.(llm.StreamingProvider)
+
+	for iteration := 0; ; iteration++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+
+		// Apply MicroCompact
+		a.messages = compact.MicroCompact(a.messages)
+
+		// Update budget and check if AutoCompact is needed
+		a.budget.Update(a.counter, a.systemPrompt, a.toolDefinitions(), a.messages)
+		if a.budget.NeedsCompact() {
+			telemetry.Log.
+				WithField("used", a.budget.Used()).
+				WithField("effective_window", a.budget.EffectiveWindow()).
+				Info("triggering auto-compact")
+			compacted, err := a.autoCompactor.Compact(ctx, a.messages)
+			if err != nil {
+				telemetry.Log.WithField("error", err.Error()).Warn("auto-compact failed")
+			} else {
+				a.messages = compacted
+				a.budget.ResetCalibration()
+			}
+		}
+
+		req := &llm.Request{
+			Model:     a.model,
+			System:    a.systemPrompt,
+			Messages:  a.messages,
+			MaxTokens: a.maxTokens,
+			Tools:     a.toolDefinitions(),
+		}
+
+		var resp *llm.Response
+		var err error
+
+		if canStream {
+			resp, err = a.consumeStream(ctx, streamProvider, req, cb)
+		} else {
+			resp, err = a.provider.Complete(ctx, req)
+		}
+		if err != nil {
+			return "", fmt.Errorf("iteration %d: %w", iteration, err)
+		}
+
+		// Track cumulative usage
+		a.totalUsage.InputTokens += resp.Usage.InputTokens
+		a.totalUsage.OutputTokens += resp.Usage.OutputTokens
+
+		// Calibrate budget
+		a.budget.CalibrateFromAPI(resp.Usage.InputTokens, len(a.messages))
+
+		// Append assistant response
+		assistantMsg := llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: resp.Content,
+		}
+		a.messages = append(a.messages, assistantMsg)
+		a.recordEntry("assistant", &assistantMsg)
+
+		telemetry.Log.
+			WithField("iteration", iteration).
+			WithField("stop_reason", string(resp.StopReason)).
+			WithField("output_tokens", resp.Usage.OutputTokens).
+			Debug("stream loop iteration complete")
+
+		switch resp.StopReason {
+		case llm.StopEndTurn:
+			return resp.TextContent(), nil
+
+		case llm.StopToolUse:
+			toolBlocks := resp.ToolUseBlocks()
+			if len(toolBlocks) == 0 {
+				return resp.TextContent(), nil
+			}
+
+			results := make([]llm.ContentBlock, 0, len(toolBlocks))
+			for _, tb := range toolBlocks {
+				result, isErr := a.executeTool(ctx, tb)
+				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
+			}
+			toolResultMsg := llm.Message{
+				Role:    llm.RoleUser,
+				Content: results,
+			}
+			a.messages = append(a.messages, toolResultMsg)
+			a.recordEntry("user", &toolResultMsg)
+
+		case llm.StopMaxTokens:
+			return resp.TextContent(), fmt.Errorf("output truncated (max_tokens reached)")
+
+		default:
+			return resp.TextContent(), fmt.Errorf("unexpected stop reason: %s", resp.StopReason)
+		}
+	}
+}
+
+// toolBuilder accumulates streamed tool call fragments.
+type toolBuilder struct {
+	id      string
+	name    string
+	jsonBuf strings.Builder
+	index   int
+}
+
+// consumeStream reads all events from a streaming completion channel and
+// assembles them into a unified Response. Text deltas are forwarded to the
+// callback in real-time; tool input fragments are buffered until complete.
+func (a *Agent) consumeStream(
+	ctx context.Context,
+	sp llm.StreamingProvider,
+	req *llm.Request,
+	cb StreamCallback,
+) (*llm.Response, error) {
+	ch, err := sp.CompleteStream(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var textAccum strings.Builder
+	toolAccum := map[int]*toolBuilder{}
+	var stopReason llm.StopReason
+	var usage llm.Usage
+
+	for event := range ch {
+		switch event.Type {
+		case llm.EventTextDelta:
+			textAccum.WriteString(event.Text)
+			if cb != nil {
+				cb(event)
+			}
+
+		case llm.EventToolUseStart:
+			toolAccum[event.Index] = &toolBuilder{
+				id:    event.ID,
+				name:  event.Name,
+				index: event.Index,
+			}
+			if cb != nil {
+				cb(event)
+			}
+
+		case llm.EventInputJSONDelta:
+			if tb, ok := toolAccum[event.Index]; ok {
+				tb.jsonBuf.WriteString(event.InputJSON)
+			}
+
+		case llm.EventContentBlockStop:
+			// Nothing to do for text blocks; tool blocks will be assembled below
+
+		case llm.EventMessageDelta:
+			stopReason = event.StopReason
+			usage = event.Usage
+
+		case llm.EventError:
+			return nil, event.Error
+		}
+	}
+
+	// Assemble response content blocks
+	var content []llm.ContentBlock
+
+	if textAccum.Len() > 0 {
+		content = append(content, llm.NewTextBlock(textAccum.String()))
+	}
+
+	for _, tb := range toolAccum {
+		input := llm.SafeParseJSON([]byte(tb.jsonBuf.String()))
+		content = append(content, llm.ContentBlock{
+			Type:  llm.ContentToolUse,
+			ID:    tb.id,
+			Name:  tb.name,
+			Input: input,
+		})
+	}
+
+	return &llm.Response{
+		Content:    content,
+		StopReason: stopReason,
+		Usage:      usage,
+	}, nil
 }
 
 // executeTool dispatches a tool_use block to the Registry and returns the
