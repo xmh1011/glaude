@@ -370,4 +370,40 @@ export type Attachment =
 
 ---
 
+---
 
+## 设计哲学
+
+> 以下内容提炼自设计深潜系列，阐述 System Prompt 工程背后的设计理念。
+
+### Prompt 不是字符串，而是运行时装配系统
+
+Claude Code 的运行环境高度动态：是否是 coordinator 模式、有没有主线程 agent 定义、是否有自定义/追加 prompt、当前会话加载了哪些 memory/skills/plugins。如果坚持把 prompt 当静态模板，系统很快就会陷入两个困境：一改模式就得重写整段 prompt、prompt 变化变得不可解释。
+
+### 优先级系统定义的是"谁拥有解释权"
+
+override → coordinator → agent → custom → default → append，这不是简单的 if-else，而是在定义当前这轮对模型行为拥有最高解释权的是谁。override 一旦存在就替换所有其他层（"重新立法"）；coordinator 优先于普通 agent（调度秩序优先）；proactive 模式对 agent prompt 采取 append 而不是 replace（域内补充 vs 替代基础人格）。
+
+### Prompt 缓存是隐藏主角
+
+系统把 prompt section 分成可缓存段和会打破缓存的危险段。对长会话代理来说，prompt 不是一次性成本，而是**被反复摊销的基础设施成本**。不稳定的前缀会导致 cache miss、token 成本升高、响应延迟上升、行为难以复现。
+
+### CLAUDE.md 把局部规则前移为系统上下文
+
+代码代理最容易失败的地方不是语法，而是协作习惯。CLAUDE.md 相当于把"项目的非代码事实"前置进系统上下文，让 agent 从进入仓库第一刻起就活在该项目的制度里。
+
+### Prompt 承担治理层角色
+
+权限系统只能拦下不该执行的动作，却不能规定模型应当怎样思考和表达。Claude Code 是双治理系统：**prompt 负责塑造意图与行为倾向，permission/hook 负责裁决最终动作是否落地**。少了任何一半系统都会变形。
+
+### Skills 是 Prompt 工程的自然外延
+
+把高密度知识与工作流说明从主 prompt 中抽离，做到平时不污染上下文、需要时再装配。和 Tool defer loading 同构——Claude Code 一直在把高复杂度能力拆成**"基础常驻层"和"按需装载层"**。
+
+### Prompt 的三层跃迁
+
+1. 从静态文本变成**动态装配**
+2. 从人格设定变成**行为治理**
+3. 从单轮输入变成**可缓存、可分层、可局部失效的长期资产**
+
+Prompt 在 Claude Code 中已经不是"给模型看的说明书"，而是整个 agent runtime 的**认知宪法**。

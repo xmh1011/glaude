@@ -365,3 +365,43 @@ readSessionLite(filePath) → parseSessionInfoFromLite() → 过滤侧链
 
 ---
 
+## 设计哲学
+
+> 以下内容提炼自设计深潜系列，阐述持久化与记忆系统背后的设计理念。
+
+### 记忆系统的核心不是记住，而是分层遗忘
+
+不同信息处于不同时间尺度：当前正在编辑的文件是分钟级事实、项目用 bun 不是 npm 是会话级事实、用户偏好是长期协作事实。全部塞进上下文的结果：短期上下文被长期事实占满，长期事实又因为压缩不断遗失。
+
+### 四类 memory 的闭合分类是最重要的约束
+
+user、feedback、project、reference——更重要的是它**排除**了什么：代码结构、架构、git history、文件路径、谁改了什么。真正宝贵的 memory 不是"当前项目事实的副本"，而是无法从仓库当前状态可靠反推出来的协作事实。没有这条边界，memory 会迅速退化成过期索引库。
+
+### MEMORY.md 不是记忆，而是记忆索引
+
+模型每轮都要带上入口索引，但不需要每轮吃下全部历史细节。MEMORY.md 像目录页，topic file 像正文。系统对 MEMORY.md 施加行数上限和字节上限，因为膨胀后的索引会毁掉它作为低成本入口的价值。
+
+### Auto-memory：先日志，后蒸馏
+
+不强迫主 agent 每次维护完美 memory 索引。允许长期 assistant 模式采用 append-only 的 daily log，再由后续流程蒸馏成结构化 memory。这和数据库里的 WAL、日志驱动索引、离线 compaction 思路一样——Claude Code 把 **memory 也做成了冷热分层系统**。
+
+### extractMemories 是异步补偿层
+
+主 agent 有时主动保存记忆，有时不会。extractMemories 作为后台补偿机制负责补捞遗漏。主链路尽量快、尽量轻；补偿链路负责长期一致性。**不幻想主链路永远完美，主动为不完美预留补偿。**
+
+### History、Session、Memory 的区别是理解持久化系统的关键
+
+- **history** 是输入习惯缓存（服务于上箭头、搜索、重复命令）
+- **session transcript** 是执行账本（服务于 resume、调试、复盘）
+- **memory** 是长期协作知识（只保存未来会话仍有价值且不宜从现态重建的信息）
+
+三者一旦混淆，用户体验、resume 可靠性、长期记忆质量会同时坏掉。
+
+### 核心原理
+
+**让每种信息待在最适合它的时间尺度和存储介质里。** 当前上下文负责立即推理、transcript 负责执行可追溯、history 负责输入便利、memory index 负责低成本长期引导、memory files 负责长期细节沉淀、daily logs 负责原始观察积累。
+
+记忆系统真正厉害的地方不是"记住了很多"，而是它知道什么不该记在 prompt 里、什么不该记在 memory 里、什么应该先记成日志再慢慢蒸馏。
+
+---
+

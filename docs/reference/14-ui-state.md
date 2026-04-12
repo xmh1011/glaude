@@ -799,3 +799,37 @@ computerUseMcpState?: {
 ---
 
 *下一集：第 15 集 — 服务与 API 层*
+
+---
+
+## 设计哲学
+
+> 以下内容提炼自设计深潜系列，阐述终端 UI 框架背后的设计理念。
+
+### 终端不是壳，而是受限但完整的交互容器
+
+Claude Code 不是一条命令跑完就结束的 CLI，而是持续交互、持续渲染、持续响应异步事件的环境。它在终端里实现了一个轻量交互操作系统。
+
+### React + Ink 的真正意义：把交互复杂度变成状态复杂度
+
+REPL 页面上同时有 transcript 流、输入框、工具进度、弹窗焦点、搜索状态、fullscreen 滚动、teammate/background task 状态等。如果用传统命令式终端绘制，状态和渲染会迅速纠缠。React/Ink 把复杂度从"如何一点点改终端屏幕"转移到"如何建模当前交互状态"。
+
+### REPL 页面是窗口管理器
+
+REPL.tsx 之所以长，不是因为没有抽象，而是因为"终端里所有异步交互最终都得落回一个可协调的中心"。它处理 prompt 提交、transcript 双屏、fullscreen 行为、权限弹窗焦点、transcript 搜索滚动、agent transcript 切换等。
+
+### PromptInput 是交互中枢，不是输入框
+
+在 agent CLI 里，用户输入从来不只是发一句话。当前是否在 transcript 模式、是否有待审批对话、是否在 teammate transcript 中——输入不是自由文本入口，而是**会话操作总线**。
+
+### Vim 模式说明它把终端用户当高级用户
+
+Claude Code 默认核心用户是终端重度开发者。更多键盘驱动而非鼠标依赖、transcript 支持搜索跳转、footer 压缩高价值状态、fullscreen 是高频工作模式。UI 不是大众化 UI，而是**为高手工作流优化过的 UI**。
+
+### Transcript 是审计界面
+
+Agent 交互不是一次问答，而是可回溯过程。没有 transcript，Claude Code 退化成"只看最新回答"的聊天壳；有了 transcript，它才具备工程协作中的**可复盘性**。
+
+### 核心洞察
+
+Claude Code 的终端 UI 不是"好看"的问题，而是"agent 是否可用"的问题。没有这套 UI，Claude Code 也许仍能执行任务，但用户将很难**理解它、驾驭它、信任它**。
