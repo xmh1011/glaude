@@ -17,7 +17,7 @@ import (
 	"glaude/internal/agent"
 	"glaude/internal/config"
 	"glaude/internal/llm"
-	promptpkg "glaude/internal/prompt"
+	"glaude/internal/prompt"
 	"glaude/internal/telemetry"
 	"glaude/internal/tool"
 )
@@ -59,7 +59,7 @@ func run() int {
 }
 
 func buildRootCmd(ctx context.Context) *cobra.Command {
-	var prompt string
+	var userPrompt string
 
 	rootCmd := &cobra.Command{
 		Use:   "glaude",
@@ -83,15 +83,15 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			telemetry.Close()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prompt != "" {
+			if userPrompt != "" {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
 				reg := buildRegistry()
-				systemPrompt := promptpkg.NewBuilder().Build()
-				a := agent.New(provider, "claude-sonnet-4-20250514", systemPrompt, reg)
-				text, err := a.Run(cmd.Context(), prompt)
+				sysPrompt := prompt.NewBuilder().Build()
+				a := agent.New(provider, "claude-sonnet-4-20250514", sysPrompt, reg)
+				text, err := a.Run(cmd.Context(), userPrompt)
 
 				usage := a.TotalUsage()
 				telemetry.Log.
@@ -116,7 +116,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 	}
 
 	// Flags
-	rootCmd.Flags().StringVarP(&prompt, "prompt", "p", "", "Run a single prompt and exit")
+	rootCmd.Flags().StringVarP(&userPrompt, "prompt", "p", "", "Run a single prompt and exit")
 
 	// Subcommands
 	rootCmd.AddCommand(buildVersionCmd())

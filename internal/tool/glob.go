@@ -52,7 +52,11 @@ func (g *GlobTool) InputSchema() json.RawMessage {
 
 func (g *GlobTool) IsReadOnly() bool { return true }
 
-func (g *GlobTool) Execute(_ context.Context, input json.RawMessage) (string, error) {
+func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	var in globInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
@@ -80,6 +84,11 @@ func (g *GlobTool) Execute(_ context.Context, input json.RawMessage) (string, er
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // skip unreadable entries
+		}
+
+		// Check cancellation periodically during walk
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
 		// Exclude default directories

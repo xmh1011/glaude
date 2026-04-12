@@ -33,7 +33,11 @@ func (l *LSTool) InputSchema() json.RawMessage {
 
 func (l *LSTool) IsReadOnly() bool { return true }
 
-func (l *LSTool) Execute(_ context.Context, input json.RawMessage) (string, error) {
+func (l *LSTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	var in lsInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
