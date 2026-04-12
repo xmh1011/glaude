@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"glaude/internal/memory"
 )
 
 // FileWriteTool creates new files or completely overwrites existing ones.
 // Parent directories are created automatically.
-type FileWriteTool struct{}
+type FileWriteTool struct {
+	Checkpoint *memory.Checkpoint
+}
 
 type fileWriteInput struct {
 	FilePath string `json:"file_path"`
@@ -53,6 +57,14 @@ func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (str
 	dir := filepath.Dir(in.FilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("creating directories %s: %w", dir, err)
+	}
+
+	// Checkpoint: save file state before mutation
+	if f.Checkpoint != nil {
+		txID := f.Checkpoint.NextTxID()
+		if err := f.Checkpoint.Save(txID, in.FilePath); err != nil {
+			return "", fmt.Errorf("checkpoint: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(in.FilePath, []byte(in.Content), 0644); err != nil {
