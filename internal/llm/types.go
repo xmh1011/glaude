@@ -4,7 +4,9 @@
 // of glaude from vendor-specific API differences (Anthropic, OpenAI, Ollama).
 package llm
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Role represents the message sender.
 type Role string

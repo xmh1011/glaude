@@ -10,7 +10,9 @@
 // tool.Tool interface for transparent integration with the Agent's Registry.
 package mcp
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // --- JSON-RPC 2.0 types ---
 

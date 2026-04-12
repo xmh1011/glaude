@@ -9,10 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/xmh1011/glaude/internal/compact"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/permission"
+	"github.com/xmh1011/glaude/internal/session"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
 )
@@ -30,6 +35,8 @@ type Agent struct {
 	counter       *compact.TokenCounter
 	autoCompactor *compact.AutoCompactor
 	gate          *permission.Gate
+	session       *session.Store // nil = no persistence (tests, sub-agents)
+	lastUUID      string         // UUID of the last recorded entry for parentUUID chaining
 }
 
 // New creates an Agent bound to the given provider and model.
@@ -59,13 +66,35 @@ func (a *Agent) Gate() *permission.Gate {
 	return a.gate
 }
 
+// SetSession sets the session store for conversation persistence.
+// Pass nil to disable persistence (default).
+func (a *Agent) SetSession(s *session.Store) {
+	a.session = s
+}
+
+// Session returns the current session store, or nil.
+func (a *Agent) Session() *session.Store {
+	return a.session
+}
+
+// RestoreFrom loads a saved conversation into the agent's message history.
+// This is used by --continue and --resume to restore a previous session.
+func (a *Agent) RestoreFrom(entries []*session.Entry) {
+	a.messages = session.ToMessages(session.BuildChain(entries))
+	if len(entries) > 0 {
+		a.lastUUID = entries[len(entries)-1].UUID
+	}
+}
+
 // Run executes the agent loop for a single user prompt.
 // It returns the assistant's final text response.
 func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
-	a.messages = append(a.messages, llm.Message{
+	userMsg := llm.Message{
 		Role:    llm.RoleUser,
 		Content: []llm.ContentBlock{llm.NewTextBlock(prompt)},
-	})
+	}
+	a.messages = append(a.messages, userMsg)
+	a.recordEntry("user", &userMsg)
 
 	telemetry.Log.WithField("prompt_len", len(prompt)).Info("agent loop started")
 
@@ -113,10 +142,12 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		a.budget.CalibrateFromAPI(resp.Usage.InputTokens, len(a.messages))
 
 		// Append assistant response to conversation history
-		a.messages = append(a.messages, llm.Message{
+		assistantMsg := llm.Message{
 			Role:    llm.RoleAssistant,
 			Content: resp.Content,
-		})
+		}
+		a.messages = append(a.messages, assistantMsg)
+		a.recordEntry("assistant", &assistantMsg)
 
 		telemetry.Log.
 			WithField("iteration", iteration).
@@ -140,10 +171,12 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				result, isErr := a.executeTool(ctx, tb)
 				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
 			}
-			a.messages = append(a.messages, llm.Message{
+			toolResultMsg := llm.Message{
 				Role:    llm.RoleUser,
 				Content: results,
-			})
+			}
+			a.messages = append(a.messages, toolResultMsg)
+			a.recordEntry("user", &toolResultMsg)
 			// Continue the loop: the LLM will see the result and decide next action
 
 		case llm.StopMaxTokens:
@@ -238,6 +271,45 @@ func (a *Agent) Messages() []llm.Message {
 // Budget returns the current token budget state.
 func (a *Agent) Budget() *compact.Budget {
 	return a.budget
+}
+
+// recordEntry persists a message entry to the session store if available.
+func (a *Agent) recordEntry(entryType string, msg *llm.Message) {
+	if a.session == nil {
+		return
+	}
+	id := uuid.New().String()
+	cwd, _ := os.Getwd()
+	entry := &session.Entry{
+		Type:       entryType,
+		UUID:       id,
+		ParentUUID: a.lastUUID,
+		SessionID:  a.session.SessionID(),
+		CWD:        cwd,
+		Timestamp:  time.Now().Format(time.RFC3339),
+		Message:    msg,
+	}
+	if err := a.session.Append(entry); err != nil {
+		telemetry.Log.WithField("error", err.Error()).Warn("failed to record session entry")
+	}
+	a.lastUUID = id
+}
+
+// RecordLastPrompt writes a "last-prompt" metadata entry for session listing.
+func (a *Agent) RecordLastPrompt(prompt string) {
+	if a.session == nil {
+		return
+	}
+	cwd, _ := os.Getwd()
+	entry := &session.Entry{
+		Type:      "last-prompt",
+		UUID:      uuid.New().String(),
+		SessionID: a.session.SessionID(),
+		CWD:       cwd,
+		Timestamp: time.Now().Format(time.RFC3339),
+		Text:      prompt,
+	}
+	_ = a.session.Append(entry)
 }
 
 // toolDefinitions converts Registry tools to LLM-ready definitions.
