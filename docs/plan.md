@@ -52,7 +52,7 @@
 * **设计细节**：
     * **MVU 单向数据流**：彻底分离 UI 状态 (Model)、事件处理 (Update) 与渲染层 (View)。所有的异步操作（网络请求、底层命令执行）均通过全局事件总线（消息/命令）抛给主 Update 函数处理，避免并发读写冲突。
     * **富文本与 Diff 渲染机制**：设计统一的文本着色器，对文件变更执行 Diff 算法计算增删块，映射为终端的安全色盘输出。
-* **📖 参考文档**：[`reference/14-ui-state-management.md`](./reference/14-ui-state-management.md), [`reference/14-ui-state-rendering.md`](./reference/14-ui-state-rendering.md)
+* **📖 参考文档**：[`reference/14-ui-state.md`](./reference/14-ui-state.md)
 
 ### Phase 6 — 上下文预算与压缩调度
 
@@ -93,7 +93,7 @@
 * **设计目标**：实现"打字机"般的实时反馈，同时保证 JSON 结构体的完整解析。
 * **设计细节**：
     * **流式事件分拣器**：设计底层的流式解析状态机。收到 `text_delta` 时，直接将数据块投递至 UI 渲染管线；收到 `tool_use_delta` 时，将数据截留至内存缓冲区，阻塞挂起，直至收到 `stop` 标志再进行完整性校验并投递给工具执行引擎。
-* **📖 参考文档**：[`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md), [`reference/14-ui-state-management.md`](./reference/14-ui-state-management.md), [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)
+* **📖 参考文档**：[`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md), [`reference/14-ui-state.md`](./reference/14-ui-state.md), [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)
 
 ### Phase 11 — 自动化钩子与交付
 
@@ -124,8 +124,7 @@
 | [`reference/11-compact-system.md`](./reference/11-compact-system.md) | 压缩系统：多层架构 | Phase 6 |
 | [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md) | 启动与引导 | Phase 0/1/10/11 |
 | [`reference/13-bridge-system.md`](./reference/13-bridge-system.md) | 桥接系统：远程控制协议 | Phase 8 |
-| [`reference/14-ui-state-management.md`](./reference/14-ui-state-management.md) | UI 与状态管理 | Phase 5/10 |
-| [`reference/14-ui-state-rendering.md`](./reference/14-ui-state-rendering.md) | UI 渲染管线 | Phase 5 |
+| [`reference/14-ui-state.md`](./reference/14-ui-state.md) | UI 与状态管理 | Phase 5/10 |
 | [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md) | 服务层与 API 架构 | Phase 1/9/10 |
 | [`reference/16-infrastructure-config.md`](./reference/16-infrastructure-config.md) | 基础设施与配置 | Phase 0/4 |
 | [`reference/17-telemetry-privacy-operations.md`](./reference/17-telemetry-privacy-operations.md) | 遥测、隐私与运营 | Phase 0 |

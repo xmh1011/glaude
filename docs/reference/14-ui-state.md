@@ -1,4 +1,4 @@
-# 第 14 集：UI 与状态管理 —— 终端里的浏览器
+# UI 与状态管理：终端里的浏览器
 
 > 📚 本文档源自 [claude-reviews-claude](https://github.com/openedclaude/claude-reviews-claude) 项目，作为 Glaude 实现的参考分析。
 
@@ -799,4 +799,3 @@ computerUseMcpState?: {
 ---
 
 *下一集：第 15 集 — 服务与 API 层*
-
