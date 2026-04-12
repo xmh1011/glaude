@@ -21,6 +21,7 @@ import (
 	"glaude/internal/prompt"
 	"glaude/internal/telemetry"
 	"glaude/internal/tool"
+	"glaude/internal/ui"
 )
 
 // version is set at build time via -ldflags.
@@ -89,7 +90,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
-				reg := buildRegistry()
+				reg := buildRegistry(nil)
 
 				// Load directive files (GLAUDE.md) from all tiers
 				cwd, _ := os.Getwd()
@@ -116,11 +117,26 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			}
 			// Default: REPL mode
 			telemetry.Log.WithField("mode", "repl").Info("entering REPL")
-			fmt.Println("glaude REPL mode (not yet implemented)")
-			fmt.Println("Press Ctrl+C to exit.")
 
-			// Block until context is cancelled
-			<-cmd.Context().Done()
+			provider := llm.NewAnthropicProvider("")
+			cp := memory.NewCheckpoint()
+			reg := buildRegistry(cp)
+
+			cwd, _ := os.Getwd()
+			mem := &memory.FileStore{}
+			instructions, err := mem.Load(cwd)
+			if err != nil {
+				telemetry.Log.WithField("error", err.Error()).Warn("failed to load directives")
+			}
+
+			sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
+			a := agent.New(provider, "claude-sonnet-4-20250514", sysPrompt, reg)
+
+			m := ui.NewModel(a, cp, cmd.Context())
+			p := ui.NewProgram(m)
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("UI: %w", err)
+			}
 			return nil
 		},
 	}
@@ -145,8 +161,11 @@ func buildVersionCmd() *cobra.Command {
 }
 
 // buildRegistry creates a tool registry with all built-in tools.
-func buildRegistry() *tool.Registry {
-	cp := memory.NewCheckpoint()
+// If cp is nil, a new Checkpoint is created internally.
+func buildRegistry(cp *memory.Checkpoint) *tool.Registry {
+	if cp == nil {
+		cp = memory.NewCheckpoint()
+	}
 	reg := tool.NewRegistry()
 	reg.Register(&tool.FileReadTool{})
 	reg.Register(&tool.FileEditTool{Checkpoint: cp})
