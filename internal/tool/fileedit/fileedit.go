@@ -1,4 +1,4 @@
-package fileedittool
+package fileedit
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"github.com/xmh1011/glaude/internal/tool"
 )
 
-// FileEditTool performs precise string replacement in files.
+// Tool performs precise string replacement in files.
 // It uses str_replace semantics: old_string must match exactly once
 // (unless replace_all is set), then is replaced with new_string.
-type FileEditTool struct {
+type Tool struct {
 	Checkpoint *memory.Checkpoint
 	FileState  *tool.FileStateCache
 }
@@ -27,13 +27,13 @@ type Input struct {
 	ReplaceAll bool   `json:"replace_all"`
 }
 
-func (f *FileEditTool) Name() string { return "Edit" }
+func (f *Tool) Name() string { return "Edit" }
 
-func (f *FileEditTool) Description() string {
+func (f *Tool) Description() string {
 	return "Performs exact string replacements in files. The old_string must be unique in the file unless replace_all is set."
 }
 
-func (f *FileEditTool) InputSchema() json.RawMessage {
+func (f *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -46,9 +46,9 @@ func (f *FileEditTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (f *FileEditTool) IsReadOnly() bool { return false }
+func (f *Tool) IsReadOnly() bool { return false }
 
-func (f *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (f *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

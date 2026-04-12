@@ -12,7 +12,7 @@ import (
 
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/tool"
-	"github.com/xmh1011/glaude/internal/tool/filereadtool"
+	"github.com/xmh1011/glaude/internal/tool/fileread"
 )
 
 func TestRun_EndTurn(t *testing.T) {
@@ -106,7 +106,7 @@ func TestRun_ToolUseWithRegistry(t *testing.T) {
 	)
 
 	reg := tool.NewRegistry()
-	reg.Register(&filereadtool.FileReadTool{})
+	reg.Register(&fileread.Tool{})
 
 	a := New(mock, "mock-model", "test", reg)
 	text, err := a.Run(context.Background(), "read the file")

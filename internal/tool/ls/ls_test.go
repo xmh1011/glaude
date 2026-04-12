@@ -1,4 +1,4 @@
-package lstool
+package ls
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLSTool_Execute(t *testing.T) {
-	tool := &LSTool{}
+func TestTool_Execute(t *testing.T) {
+	tool := &Tool{}
 
 	t.Run("list directory", func(t *testing.T) {
 		tmp := t.TempDir()

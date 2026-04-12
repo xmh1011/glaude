@@ -1,4 +1,4 @@
-package bashtool
+package bash
 
 import (
 	"bufio"
@@ -22,30 +22,30 @@ const (
 	DefaultTimeout = 120 * time.Second
 )
 
-// BashTool executes shell commands in a persistent bash subprocess.
+// Tool executes shell commands in a persistent bash subprocess.
 //
 // Unlike single-shot exec, the shell persists across calls so stateful
 // commands (cd, export, etc.) carry forward. Output is delimited by a
 // UUID sentinel to precisely capture each command's stdout+stderr.
-type BashTool struct {
+type Tool struct {
 	mu      sync.Mutex
 	shell   *persistentShell
 	timeout time.Duration
 }
 
-// New creates a BashTool. The shell subprocess is started lazily
+// New creates a Tool. The shell subprocess is started lazily
 // on the first Execute call.
-func New() *BashTool {
-	return &BashTool{timeout: DefaultTimeout}
+func New() *Tool {
+	return &Tool{timeout: DefaultTimeout}
 }
 
-func (b *BashTool) Name() string { return "Bash" }
+func (b *Tool) Name() string { return "Bash" }
 
-func (b *BashTool) Description() string {
+func (b *Tool) Description() string {
 	return "Executes a bash command and returns its output. The shell persists between calls, so state (cd, env vars) carries forward."
 }
 
-func (b *BashTool) InputSchema() json.RawMessage {
+func (b *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -57,7 +57,7 @@ func (b *BashTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (b *BashTool) IsReadOnly() bool { return false }
+func (b *Tool) IsReadOnly() bool { return false }
 
 // Input is the parsed input for the Bash tool.
 type Input struct {
@@ -66,7 +66,7 @@ type Input struct {
 	Description string `json:"description"`
 }
 
-func (b *BashTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (b *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
@@ -100,7 +100,7 @@ func (b *BashTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 }
 
 // Close terminates the persistent shell subprocess.
-func (b *BashTool) Close() {
+func (b *Tool) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.shell != nil {
@@ -110,7 +110,7 @@ func (b *BashTool) Close() {
 }
 
 // SetTimeout sets the default command timeout (for testing).
-func (b *BashTool) SetTimeout(d time.Duration) {
+func (b *Tool) SetTimeout(d time.Duration) {
 	b.timeout = d
 }
 

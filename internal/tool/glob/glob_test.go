@@ -1,4 +1,4 @@
-package globtool
+package glob
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGlobTool_Execute(t *testing.T) {
+func TestTool_Execute(t *testing.T) {
 	// Create test directory structure
 	tmp := t.TempDir()
 	os.MkdirAll(filepath.Join(tmp, "src"), 0755)
@@ -24,7 +24,7 @@ func TestGlobTool_Execute(t *testing.T) {
 	os.WriteFile(filepath.Join(tmp, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644)
 	os.WriteFile(filepath.Join(tmp, "node_modules", "pkg", "index.js"), []byte(""), 0644)
 
-	tool := &GlobTool{}
+	tool := &Tool{}
 
 	t.Run("match go files", func(t *testing.T) {
 		input, _ := json.Marshal(Input{Pattern: "*.go", Path: tmp})

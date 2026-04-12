@@ -1,4 +1,4 @@
-package lstool
+package ls
 
 import (
 	"context"
@@ -9,21 +9,21 @@ import (
 	"strings"
 )
 
-// LSTool lists directory contents (non-recursive).
-type LSTool struct{}
+// Tool lists directory contents (non-recursive).
+type Tool struct{}
 
 // Input is the parsed input for the LS tool.
 type Input struct {
 	Path string `json:"path"`
 }
 
-func (l *LSTool) Name() string { return "LS" }
+func (l *Tool) Name() string { return "LS" }
 
-func (l *LSTool) Description() string {
+func (l *Tool) Description() string {
 	return "Lists files and directories in a given path. Returns name, type (file/dir), and size for each entry."
 }
 
-func (l *LSTool) InputSchema() json.RawMessage {
+func (l *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -32,9 +32,9 @@ func (l *LSTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (l *LSTool) IsReadOnly() bool { return true }
+func (l *Tool) IsReadOnly() bool { return true }
 
-func (l *LSTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (l *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

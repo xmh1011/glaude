@@ -24,14 +24,14 @@ import (
 	"github.com/xmh1011/glaude/internal/prompt"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
-	"github.com/xmh1011/glaude/internal/tool/agenttool"
-	"github.com/xmh1011/glaude/internal/tool/bashtool"
-	"github.com/xmh1011/glaude/internal/tool/fileedittool"
-	"github.com/xmh1011/glaude/internal/tool/filereadtool"
-	"github.com/xmh1011/glaude/internal/tool/filewritetool"
-	"github.com/xmh1011/glaude/internal/tool/globtool"
-	"github.com/xmh1011/glaude/internal/tool/greptool"
-	"github.com/xmh1011/glaude/internal/tool/lstool"
+	"github.com/xmh1011/glaude/internal/tool/bash"
+	"github.com/xmh1011/glaude/internal/tool/fileedit"
+	"github.com/xmh1011/glaude/internal/tool/fileread"
+	"github.com/xmh1011/glaude/internal/tool/filewrite"
+	"github.com/xmh1011/glaude/internal/tool/glob"
+	"github.com/xmh1011/glaude/internal/tool/grep"
+	"github.com/xmh1011/glaude/internal/tool/ls"
+	"github.com/xmh1011/glaude/internal/tool/subagent"
 	"github.com/xmh1011/glaude/internal/ui"
 )
 
@@ -193,20 +193,20 @@ func buildVersionCmd() *cobra.Command {
 
 // buildRegistry creates a tool registry with all built-in tools.
 // If cp is nil, a new Checkpoint is created internally.
-// provider and model are used for AgentTool's sub-agent spawning.
+// provider and model are used for sub-agent spawning.
 func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *tool.Registry {
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
 	fileState := tool.NewFileStateCache()
 	reg := tool.NewRegistry()
-	reg.Register(&filereadtool.FileReadTool{FileState: fileState})
-	reg.Register(&fileedittool.FileEditTool{Checkpoint: cp, FileState: fileState})
-	reg.Register(&filewritetool.FileWriteTool{Checkpoint: cp, FileState: fileState})
-	reg.Register(bashtool.New())
-	reg.Register(&globtool.GlobTool{})
-	reg.Register(&greptool.GrepTool{})
-	reg.Register(&lstool.LSTool{})
-	reg.Register(&agenttool.AgentTool{Provider: provider, Model: model, Registry: reg})
+	reg.Register(&fileread.Tool{FileState: fileState})
+	reg.Register(&fileedit.Tool{Checkpoint: cp, FileState: fileState})
+	reg.Register(&filewrite.Tool{Checkpoint: cp, FileState: fileState})
+	reg.Register(bash.New())
+	reg.Register(&glob.Tool{})
+	reg.Register(&grep.Tool{})
+	reg.Register(&ls.Tool{})
+	reg.Register(&subagent.Tool{Provider: provider, Model: model, Registry: reg})
 	return reg
 }

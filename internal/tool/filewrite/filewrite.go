@@ -1,4 +1,4 @@
-package filewritetool
+package filewrite
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 	"github.com/xmh1011/glaude/internal/tool"
 )
 
-// FileWriteTool creates new files or completely overwrites existing ones.
+// Tool creates new files or completely overwrites existing ones.
 // Parent directories are created automatically.
-type FileWriteTool struct {
+type Tool struct {
 	Checkpoint *memory.Checkpoint
 	FileState  *tool.FileStateCache
 }
@@ -24,13 +24,13 @@ type Input struct {
 	Content  string `json:"content"`
 }
 
-func (f *FileWriteTool) Name() string { return "Write" }
+func (f *Tool) Name() string { return "Write" }
 
-func (f *FileWriteTool) Description() string {
+func (f *Tool) Description() string {
 	return "Writes content to a file, creating it if it doesn't exist or overwriting if it does. Parent directories are created automatically."
 }
 
-func (f *FileWriteTool) InputSchema() json.RawMessage {
+func (f *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -41,9 +41,9 @@ func (f *FileWriteTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (f *FileWriteTool) IsReadOnly() bool { return false }
+func (f *Tool) IsReadOnly() bool { return false }
 
-func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (f *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

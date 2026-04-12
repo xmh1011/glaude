@@ -1,4 +1,4 @@
-package greptool
+package grep
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGrepTool_Execute(t *testing.T) {
+func TestTool_Execute(t *testing.T) {
 	tmp := t.TempDir()
 	os.MkdirAll(filepath.Join(tmp, "src"), 0755)
 	os.MkdirAll(filepath.Join(tmp, ".git"), 0755)
@@ -20,7 +20,7 @@ func TestGrepTool_Execute(t *testing.T) {
 	os.WriteFile(filepath.Join(tmp, "src", "app.go"), []byte("package src\n\nfunc App() string {\n\treturn \"app\"\n}\n"), 0644)
 	os.WriteFile(filepath.Join(tmp, ".git", "config"), []byte("package hidden\n"), 0644)
 
-	tool := &GrepTool{}
+	tool := &Tool{}
 
 	t.Run("files_with_matches mode", func(t *testing.T) {
 		input, _ := json.Marshal(map[string]interface{}{

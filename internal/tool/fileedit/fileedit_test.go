@@ -1,4 +1,4 @@
-package fileedittool
+package fileedit
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFileEditTool_Execute(t *testing.T) {
-	tool := &FileEditTool{}
+func TestTool_Execute(t *testing.T) {
+	tool := &Tool{}
 
 	t.Run("unique replace", func(t *testing.T) {
 		tmp := t.TempDir()

@@ -4,7 +4,7 @@
 // 1. Identity - who the agent is
 // 2. Rules - behavioral constraints and tool usage guidelines
 // 3. Environment - OS, shell, CWD, git status, model info
-// 4. Custom instructions - user-provided CLAUDE.md / GLAUDE.md content
+// 4. Custom instructions - user-provided GLAUDE.md content
 //
 // Tool definitions are sent separately via the tools API parameter, not
 // embedded in the system prompt text.
@@ -34,7 +34,7 @@ func NewBuilder() *Builder {
 	}
 }
 
-// WithCustomInstructions appends user-provided instructions (e.g. from CLAUDE.md).
+// WithCustomInstructions appends user-provided instructions (e.g. from GLAUDE.md).
 func (b *Builder) WithCustomInstructions(instructions string) *Builder {
 	b.custom = instructions
 	return b

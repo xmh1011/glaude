@@ -1,4 +1,4 @@
-package agenttool
+package subagent
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/xmh1011/glaude/internal/tool"
 )
 
-// AgentTool spawns an isolated sub-agent with its own context budget and
+// Tool spawns an isolated sub-agent with its own context budget and
 // message history. The sub-agent inherits the parent's LLM provider and
 // tool registry but runs a completely independent conversation loop.
 // Only the final text conclusion is returned — intermediate reasoning is discarded.
-type AgentTool struct {
+type Tool struct {
 	Provider llm.Provider
 	Model    string
 	Registry *tool.Registry
@@ -28,15 +28,15 @@ type Input struct {
 	Description string `json:"description"`
 }
 
-func (a *AgentTool) Name() string { return "Agent" }
+func (a *Tool) Name() string { return "Agent" }
 
-func (a *AgentTool) Description() string {
+func (a *Tool) Description() string {
 	return "Launches an isolated sub-agent with its own context and message history. " +
 		"The sub-agent inherits the current tools but runs independently. " +
 		"Only the final conclusion is returned."
 }
 
-func (a *AgentTool) InputSchema() json.RawMessage {
+func (a *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -48,9 +48,9 @@ func (a *AgentTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (a *AgentTool) IsReadOnly() bool { return true }
+func (a *Tool) IsReadOnly() bool { return true }
 
-func (a *AgentTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (a *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -96,7 +96,7 @@ func (a *AgentTool) Execute(ctx context.Context, input json.RawMessage) (string,
 }
 
 // runSubAgent executes an isolated agent loop with its own message history and budget.
-func (a *AgentTool) runSubAgent(ctx context.Context, systemPrompt, prompt string) (string, llm.Usage, error) {
+func (a *Tool) runSubAgent(ctx context.Context, systemPrompt, prompt string) (string, llm.Usage, error) {
 	messages := []llm.Message{
 		{Role: llm.RoleUser, Content: []llm.ContentBlock{llm.NewTextBlock(prompt)}},
 	}
@@ -178,7 +178,7 @@ func (a *AgentTool) runSubAgent(ctx context.Context, systemPrompt, prompt string
 }
 
 // ExecuteTool dispatches to the Registry (exported for testing).
-func (a *AgentTool) ExecuteTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
+func (a *Tool) ExecuteTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
 	if a.Registry == nil {
 		return fmt.Sprintf("Error: tool %q not available", tb.Name), true
 	}
@@ -200,8 +200,8 @@ func (a *AgentTool) ExecuteTool(ctx context.Context, tb llm.ContentBlock) (strin
 	return result, false
 }
 
-// toolDefinitions builds LLM tool defs, excluding AgentTool to prevent recursion.
-func (a *AgentTool) toolDefinitions() []llm.ToolDefinition {
+// toolDefinitions builds LLM tool defs, excluding Tool to prevent recursion.
+func (a *Tool) toolDefinitions() []llm.ToolDefinition {
 	if a.Registry == nil {
 		return nil
 	}

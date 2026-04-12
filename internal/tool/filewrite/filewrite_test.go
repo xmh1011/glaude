@@ -1,4 +1,4 @@
-package filewritetool
+package filewrite
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFileWriteTool_Execute(t *testing.T) {
-	tool := &FileWriteTool{}
+func TestTool_Execute(t *testing.T) {
+	tool := &Tool{}
 
 	t.Run("create new file", func(t *testing.T) {
 		tmp := t.TempDir()

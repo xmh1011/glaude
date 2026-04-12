@@ -1,4 +1,4 @@
-package agenttool
+package subagent
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/tool"
-	"github.com/xmh1011/glaude/internal/tool/filereadtool"
+	"github.com/xmh1011/glaude/internal/tool/fileread"
 )
 
 // mockSubAgentProvider returns a simple text response on first call.
@@ -56,19 +56,19 @@ func (m *mockToolUseProvider) Complete(_ context.Context, req *llm.Request) (*ll
 	}, nil
 }
 
-func TestAgentTool_Name(t *testing.T) {
-	a := &AgentTool{}
+func TestTool_Name(t *testing.T) {
+	a := &Tool{}
 	assert.Equal(t, "Agent", a.Name())
 }
 
-func TestAgentTool_IsReadOnly(t *testing.T) {
-	a := &AgentTool{}
+func TestTool_IsReadOnly(t *testing.T) {
+	a := &Tool{}
 	assert.True(t, a.IsReadOnly())
 }
 
-func TestAgentTool_Execute_BasicConclusion(t *testing.T) {
+func TestTool_Execute_BasicConclusion(t *testing.T) {
 	provider := &mockSubAgentProvider{response: "The answer is 42."}
-	a := &AgentTool{
+	a := &Tool{
 		Provider: provider,
 		Model:    "test-model",
 	}
@@ -84,20 +84,20 @@ func TestAgentTool_Execute_BasicConclusion(t *testing.T) {
 	assert.Equal(t, 1, provider.calls)
 }
 
-func TestAgentTool_Execute_EmptyPrompt(t *testing.T) {
-	a := &AgentTool{Provider: &mockSubAgentProvider{}}
+func TestTool_Execute_EmptyPrompt(t *testing.T) {
+	a := &Tool{Provider: &mockSubAgentProvider{}}
 	input, _ := json.Marshal(Input{})
 	_, err := a.Execute(context.Background(), input)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "prompt is required")
 }
 
-func TestAgentTool_Execute_WithToolUse(t *testing.T) {
+func TestTool_Execute_WithToolUse(t *testing.T) {
 	provider := &mockToolUseProvider{}
 	reg := tool.NewRegistry()
-	reg.Register(&filereadtool.FileReadTool{})
+	reg.Register(&fileread.Tool{})
 
-	a := &AgentTool{
+	a := &Tool{
 		Provider: provider,
 		Model:    "test-model",
 		Registry: reg,
@@ -115,20 +115,20 @@ func TestAgentTool_Execute_WithToolUse(t *testing.T) {
 	assert.Equal(t, 2, provider.calls)
 }
 
-func TestAgentTool_Execute_CancelledContext(t *testing.T) {
+func TestTool_Execute_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	a := &AgentTool{Provider: &mockSubAgentProvider{}}
+	a := &Tool{Provider: &mockSubAgentProvider{}}
 	input, _ := json.Marshal(Input{Prompt: "test"})
 	_, err := a.Execute(ctx, input)
 	assert.Error(t, err)
 }
 
-func TestAgentTool_BlocksRecursion(t *testing.T) {
+func TestTool_BlocksRecursion(t *testing.T) {
 	reg := tool.NewRegistry()
-	reg.Register(&AgentTool{})
-	a := &AgentTool{Registry: reg}
+	reg.Register(&Tool{})
+	a := &Tool{Registry: reg}
 	result, isErr := a.ExecuteTool(context.Background(), llm.ContentBlock{
 		Type:  llm.ContentToolUse,
 		Name:  "Agent",
@@ -138,12 +138,12 @@ func TestAgentTool_BlocksRecursion(t *testing.T) {
 	assert.Contains(t, result, "cannot spawn further sub-agents")
 }
 
-func TestAgentTool_ExcludesSelfFromToolDefs(t *testing.T) {
+func TestTool_ExcludesSelfFromToolDefs(t *testing.T) {
 	reg := tool.NewRegistry()
-	reg.Register(&filereadtool.FileReadTool{})
-	reg.Register(&AgentTool{})
+	reg.Register(&fileread.Tool{})
+	reg.Register(&Tool{})
 
-	a := &AgentTool{Registry: reg}
+	a := &Tool{Registry: reg}
 	defs := a.toolDefinitions()
 
 	names := make([]string, len(defs))

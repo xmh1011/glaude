@@ -1,4 +1,4 @@
-package bashtool
+package bash
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBashTool_SimpleCommand(t *testing.T) {
+func TestTool_SimpleCommand(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 
@@ -21,7 +21,7 @@ func TestBashTool_SimpleCommand(t *testing.T) {
 	assert.Equal(t, "hello", strings.TrimSpace(result))
 }
 
-func TestBashTool_StatePersistence(t *testing.T) {
+func TestTool_StatePersistence(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 
@@ -37,7 +37,7 @@ func TestBashTool_StatePersistence(t *testing.T) {
 	assert.Equal(t, "glaude42", strings.TrimSpace(result))
 }
 
-func TestBashTool_CdPersistence(t *testing.T) {
+func TestTool_CdPersistence(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 
@@ -54,7 +54,7 @@ func TestBashTool_CdPersistence(t *testing.T) {
 		"expected /tmp or /private/tmp, got %q", trimmed)
 }
 
-func TestBashTool_NonZeroExit(t *testing.T) {
+func TestTool_NonZeroExit(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 
@@ -64,7 +64,7 @@ func TestBashTool_NonZeroExit(t *testing.T) {
 	assert.Contains(t, err.Error(), "exited with code")
 }
 
-func TestBashTool_StderrMerged(t *testing.T) {
+func TestTool_StderrMerged(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 
@@ -75,7 +75,7 @@ func TestBashTool_StderrMerged(t *testing.T) {
 	assert.Contains(t, result, "stderr")
 }
 
-func TestBashTool_Timeout(t *testing.T) {
+func TestTool_Timeout(t *testing.T) {
 	bt := New()
 	bt.SetTimeout(1 * time.Second)
 	defer bt.Close()
@@ -90,7 +90,7 @@ func TestBashTool_Timeout(t *testing.T) {
 	assert.Less(t, elapsed, 5*time.Second, "timeout took too long")
 }
 
-func TestBashTool_MultilineOutput(t *testing.T) {
+func TestTool_MultilineOutput(t *testing.T) {
 	bt := New()
 	defer bt.Close()
 

@@ -1,4 +1,4 @@
-package filereadtool
+package fileread
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFileReadTool_Execute(t *testing.T) {
+func TestTool_Execute(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "test.txt")
 	os.WriteFile(path, []byte("line1\nline2\nline3\nline4\nline5\n"), 0644)
 
-	tool := &FileReadTool{}
+	tool := &Tool{}
 
 	t.Run("read all", func(t *testing.T) {
 		input, _ := json.Marshal(Input{FilePath: path})

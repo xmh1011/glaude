@@ -5,8 +5,8 @@
 // Tools are self-describing: they provide their own JSON Schema and prompt
 // for LLM consumption.
 //
-// Individual tool implementations live in sub-packages (e.g. bashtool,
-// filereadtool) following the same pattern as Claude Code's src/tools/.
+// Individual tool implementations live in sub-packages (e.g. bash,
+// fileread) following the same pattern as Claude Code's src/tools/.
 package tool
 
 import (
