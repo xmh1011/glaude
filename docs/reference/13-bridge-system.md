@@ -251,8 +251,6 @@ await writeBridgePointer(dir, {
 
 ## 设计哲学
 
-> 以下内容提炼自设计深潜系列，阐述 Bridge 与多端架构背后的设计理念。
-
 ### Bridge 真正的对象不是传输协议，而是会话连续性
 
 Claude Code 不是单一终端程序。Bridge 把"会话"从单进程事实升级成跨端可投递、可恢复、可观察的实体——从单机 REPL 提升到多端 session runtime。

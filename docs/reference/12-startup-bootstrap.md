@@ -298,8 +298,6 @@ main_after_run                     →  ~1000ms（REPL 就绪）
 
 ## 设计哲学
 
-> 以下内容提炼自设计深潜系列，阐述启动与引导系统背后的设计理念。
-
 ### 启动不是线性流程，而是分层建制
 
 从 `cli.tsx` 到 `main.tsx` 再到 `setup.ts`，Claude Code 做的是三层建制：

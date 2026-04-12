@@ -346,8 +346,6 @@ macOS `security` 命令有一个未文档化的 stdin 限制（4096 字节）。
 
 ## 设计哲学
 
-> 以下内容提炼自设计深潜系列，阐述权限与安全模型背后的设计理念。
-
 ### Permission Mode 不是开关，而是治理姿态
 
 不同模式定义的是系统当前采取什么治理姿态：default 是逐次裁决、plan 是先讨论后执行、acceptEdits 是局部白名单化、bypassPermissions 是高度信任、auto 是分类器代行部分决策。Claude Code 承认不存在一种永远正确的默认安全策略，把"怎么治理"本身暴露成运行时制度。

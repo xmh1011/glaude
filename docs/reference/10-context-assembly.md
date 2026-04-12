@@ -374,8 +374,6 @@ export type Attachment =
 
 ## 设计哲学
 
-> 以下内容提炼自设计深潜系列，阐述 System Prompt 工程背后的设计理念。
-
 ### Prompt 不是字符串，而是运行时装配系统
 
 Claude Code 的运行环境高度动态：是否是 coordinator 模式、有没有主线程 agent 定义、是否有自定义/追加 prompt、当前会话加载了哪些 memory/skills/plugins。如果坚持把 prompt 当静态模板，系统很快就会陷入两个困境：一改模式就得重写整段 prompt、prompt 变化变得不可解释。
