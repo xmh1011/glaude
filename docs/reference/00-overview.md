@@ -110,8 +110,9 @@ Claude Code 的强大不是来自某个杀手锏功能，而是**六大支柱协
 | 14 | [UI 与状态管理](../14-ui-state.md) | Fork Ink + React 19，终端中的 W3C 事件模型，35 行 Store，Vim 状态机 | 980 |
 | 15 | [服务层与 API](../15-services-api-layer.md) | queryModel() 700 行核心，多提供商工厂，SSE 流管道，重试引擎 | 691 |
 | 16 | [基础设施与配置](../16-infrastructure-config.md) | Bootstrap 单例，5 层设置合并，安全存储，CLAUDE.md 记忆系统 | 876 |
+| 17 | [遥测、隐私与运营控制](../17-telemetry-privacy-operations.md) | 双通道遥测管道，模型代号隐匿，远程紧急开关，编译时门控 | 528 |
 
-> **合计**：16 篇深度解析 + 本总纲，共 8,600+ 行架构分析。
+> **合计**：17 篇深度解析 + 本总纲，共 9,100+ 行架构分析。
 
 ---
 
