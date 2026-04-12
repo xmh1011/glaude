@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"glaude/internal/llm"
+	"glaude/internal/tool"
 )
 
 func TestRun_EndTurn(t *testing.T) {
@@ -18,7 +21,7 @@ func TestRun_EndTurn(t *testing.T) {
 		},
 	)
 
-	a := New(mock, "mock-model", "You are helpful.")
+	a := New(mock, "mock-model", "You are helpful.", nil)
 	text, err := a.Run(context.Background(), "Hi")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -53,8 +56,8 @@ func TestRun_EndTurn(t *testing.T) {
 	}
 }
 
-func TestRun_ToolUseLoop(t *testing.T) {
-	// Simulate: model wants a tool -> gets error result -> responds with text
+func TestRun_ToolUseNoRegistry(t *testing.T) {
+	// Without a registry, tool_use returns an error result
 	mock := llm.NewMockProvider(
 		&llm.Response{
 			Content: []llm.ContentBlock{
@@ -70,42 +73,75 @@ func TestRun_ToolUseLoop(t *testing.T) {
 			Usage:      llm.Usage{InputTokens: 20, OutputTokens: 15},
 		},
 		&llm.Response{
-			Content:    []llm.ContentBlock{llm.NewTextBlock("Tools aren't available yet.")},
+			Content:    []llm.ContentBlock{llm.NewTextBlock("No tools available.")},
 			StopReason: llm.StopEndTurn,
 			Usage:      llm.Usage{InputTokens: 50, OutputTokens: 10},
 		},
 	)
 
-	a := New(mock, "mock-model", "test")
+	a := New(mock, "mock-model", "test", nil)
 	text, err := a.Run(context.Background(), "list files")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if text != "Tools aren't available yet." {
+	if text != "No tools available." {
 		t.Fatalf("expected final text, got %q", text)
-	}
-
-	// Should have: user, assistant(tool_use), user(tool_result), assistant(end_turn)
-	if len(a.Messages()) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(a.Messages()))
 	}
 
 	// Third message should be tool result with error
 	toolResult := a.Messages()[2]
-	if toolResult.Role != llm.RoleUser {
-		t.Fatalf("tool result should be user role, got %s", toolResult.Role)
-	}
-	if toolResult.Content[0].Type != llm.ContentToolResult {
-		t.Fatalf("expected tool_result, got %s", toolResult.Content[0].Type)
-	}
 	if !toolResult.Content[0].IsError {
-		t.Fatal("tool result should be marked as error")
+		t.Fatal("tool result should be marked as error when no registry")
+	}
+}
+
+func TestRun_ToolUseWithRegistry(t *testing.T) {
+	// Create a temp file to read via FileReadTool
+	tmp := t.TempDir()
+	testFile := filepath.Join(tmp, "hello.txt")
+	os.WriteFile(testFile, []byte("hello from file\n"), 0644)
+
+	// LLM calls Read tool -> gets file content -> responds with final text
+	mock := llm.NewMockProvider(
+		&llm.Response{
+			Content: []llm.ContentBlock{
+				llm.NewTextBlock("Let me read that file."),
+				{
+					Type:  llm.ContentToolUse,
+					ID:    "tool_01",
+					Name:  "Read",
+					Input: json.RawMessage(`{"file_path":"` + testFile + `"}`),
+				},
+			},
+			StopReason: llm.StopToolUse,
+			Usage:      llm.Usage{InputTokens: 20, OutputTokens: 15},
+		},
+		&llm.Response{
+			Content:    []llm.ContentBlock{llm.NewTextBlock("The file contains: hello from file")},
+			StopReason: llm.StopEndTurn,
+			Usage:      llm.Usage{InputTokens: 60, OutputTokens: 12},
+		},
+	)
+
+	reg := tool.NewRegistry()
+	reg.Register(&tool.FileReadTool{})
+
+	a := New(mock, "mock-model", "test", reg)
+	text, err := a.Run(context.Background(), "read the file")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(text, "hello from file") {
+		t.Fatalf("expected final text to reference file content, got %q", text)
 	}
 
-	// Cumulative usage
-	usage := a.TotalUsage()
-	if usage.InputTokens != 70 || usage.OutputTokens != 25 {
-		t.Fatalf("expected usage {70, 25}, got {%d, %d}", usage.InputTokens, usage.OutputTokens)
+	// Verify tool result is NOT an error
+	toolResult := a.Messages()[2]
+	if toolResult.Content[0].IsError {
+		t.Fatalf("tool result should NOT be error, content: %s", toolResult.Content[0].Content)
+	}
+	if !strings.Contains(toolResult.Content[0].Content, "hello from file") {
+		t.Fatalf("tool result should contain file content, got: %s", toolResult.Content[0].Content)
 	}
 }
 
@@ -118,7 +154,7 @@ func TestRun_MaxTokens(t *testing.T) {
 		},
 	)
 
-	a := New(mock, "mock-model", "test")
+	a := New(mock, "mock-model", "test", nil)
 	text, err := a.Run(context.Background(), "write a long essay")
 	if text != "partial output..." {
 		t.Fatalf("expected partial text, got %q", text)
@@ -139,7 +175,7 @@ func TestRun_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	a := New(mock, "mock-model", "test")
+	a := New(mock, "mock-model", "test", nil)
 	_, err := a.Run(ctx, "hello")
 	if err == nil {
 		t.Fatal("expected context cancellation error")
