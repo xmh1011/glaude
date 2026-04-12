@@ -1,6 +1,8 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Color palette.
 var (
@@ -16,59 +18,59 @@ var (
 // Component styles.
 var (
 	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("15")).
-			Background(primaryColor).
-			Padding(0, 1)
+		Bold(true).
+		Foreground(lipgloss.Color("15")).
+		Background(primaryColor).
+		Padding(0, 1)
 
 	userLabelStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("12"))
+		Bold(true).
+		Foreground(lipgloss.Color("12"))
 
 	assistantLabelStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(accentColor)
+		Bold(true).
+		Foreground(accentColor)
 
 	userMsgStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
+		PaddingLeft(2)
 
 	assistantMsgStyle = lipgloss.NewStyle().
-				PaddingLeft(2)
+		PaddingLeft(2)
 
 	spinnerStyle = lipgloss.NewStyle().
-			Foreground(accentColor).
-			PaddingLeft(2)
+		Foreground(accentColor).
+		PaddingLeft(2)
 
 	statusBarStyle = lipgloss.NewStyle().
-			Foreground(dimColor).
-			Background(lipgloss.Color("236"))
+		Foreground(dimColor).
+		Background(lipgloss.Color("236"))
 
 	toolLabelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214")).
-			Bold(true)
+		Foreground(lipgloss.Color("214")).
+		Bold(true)
 
 	toolOutputStyle = lipgloss.NewStyle().
-			Foreground(dimColor).
-			PaddingLeft(4)
+		Foreground(dimColor).
+		PaddingLeft(4)
 
 	errorStyle = lipgloss.NewStyle().
-			Foreground(errorColor).
-			Bold(true)
+		Foreground(errorColor).
+		Bold(true)
 
 	successStyle = lipgloss.NewStyle().
-			Foreground(successColor)
+		Foreground(successColor)
 
 	// Diff styles
 	diffAddStyle = lipgloss.NewStyle().
-			Foreground(addColor)
+		Foreground(addColor)
 
 	diffDelStyle = lipgloss.NewStyle().
-			Foreground(delColor)
+		Foreground(delColor)
 
 	diffHeaderStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("33")).
-			Bold(true)
+		Foreground(lipgloss.Color("33")).
+		Bold(true)
 
 	diffHunkStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("36"))
+		Foreground(lipgloss.Color("36"))
 )
