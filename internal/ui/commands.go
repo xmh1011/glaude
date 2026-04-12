@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/permission"
 )
 
 // slashCommand defines a registered slash command.
@@ -24,6 +25,7 @@ func commands() []slashCommand {
 		{name: "clear", description: "Clear conversation history", handler: cmdClear},
 		{name: "undo", description: "Undo the last file change", handler: cmdUndo},
 		{name: "context", description: "Show current context info", handler: cmdContext},
+		{name: "mode", description: "Show/set permission mode (default|auto-edit|plan-only|auto-full)", handler: cmdMode},
 		{name: "help", description: "Show available commands", handler: cmdHelp},
 	}
 }
@@ -132,6 +134,49 @@ func cmdHelp(m Model, _ string) (Model, tea.Cmd) {
 	m.messages = append(m.messages, displayMessage{
 		role: llm.RoleAssistant,
 		text: b.String(),
+	})
+	return m, nil
+}
+
+func cmdMode(m Model, args string) (Model, tea.Cmd) {
+	gate := m.agent.Gate()
+	if gate == nil {
+		m.messages = append(m.messages, displayMessage{
+			role: llm.RoleAssistant,
+			text: "Permission gate not configured.",
+		})
+		return m, nil
+	}
+
+	args = strings.TrimSpace(args)
+	if args == "" {
+		// Show current mode
+		current := gate.Checker().Mode()
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("**Current permission mode: %s**\n\n", current))
+		b.WriteString("Available modes:\n")
+		for _, mode := range permission.AllModes() {
+			marker := "  "
+			if mode == current {
+				marker = "→ "
+			}
+			b.WriteString(fmt.Sprintf("%s`%s`\n", marker, mode))
+		}
+		b.WriteString("\nUsage: `/mode <mode-name>`")
+		m.messages = append(m.messages, displayMessage{
+			role: llm.RoleAssistant,
+			text: b.String(),
+		})
+		return m, nil
+	}
+
+	// Set new mode
+	newMode := permission.ParseMode(args)
+	gate.Checker().SetMode(newMode)
+
+	m.messages = append(m.messages, displayMessage{
+		role: llm.RoleAssistant,
+		text: fmt.Sprintf("Permission mode set to **%s**.", newMode),
 	})
 	return m, nil
 }

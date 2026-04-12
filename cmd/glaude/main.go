@@ -13,11 +13,13 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/config"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/prompt"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
@@ -134,6 +136,12 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			m := ui.NewModel(a, cp, cmd.Context())
 			p := ui.NewProgram(m)
+
+			// Wire permission gate: reads mode from config, bridges Ask to UI prompt
+			permMode := permission.ParseMode(viper.GetString("permission_mode"))
+			telemetry.Log.WithField("permission_mode", permMode.String()).Info("permission mode configured")
+			ui.WirePermissionGate(a, p, permMode)
+
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("UI: %w", err)
 			}
