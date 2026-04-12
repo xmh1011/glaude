@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"glaude/internal/llm"
 	"glaude/internal/tool"
@@ -23,37 +25,22 @@ func TestRun_EndTurn(t *testing.T) {
 
 	a := New(mock, "mock-model", "You are helpful.", nil)
 	text, err := a.Run(context.Background(), "Hi")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if text != "Hello, world!" {
-		t.Fatalf("expected %q, got %q", "Hello, world!", text)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "Hello, world!", text)
 
 	// Verify conversation history: user + assistant
-	if len(a.Messages()) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(a.Messages()))
-	}
-	if a.Messages()[0].Role != llm.RoleUser {
-		t.Fatalf("first message should be user, got %s", a.Messages()[0].Role)
-	}
-	if a.Messages()[1].Role != llm.RoleAssistant {
-		t.Fatalf("second message should be assistant, got %s", a.Messages()[1].Role)
-	}
+	require.Len(t, a.Messages(), 2)
+	assert.Equal(t, llm.RoleUser, a.Messages()[0].Role)
+	assert.Equal(t, llm.RoleAssistant, a.Messages()[1].Role)
 
 	// Verify usage tracking
 	usage := a.TotalUsage()
-	if usage.InputTokens != 10 || usage.OutputTokens != 5 {
-		t.Fatalf("expected usage {10, 5}, got {%d, %d}", usage.InputTokens, usage.OutputTokens)
-	}
+	assert.Equal(t, 10, usage.InputTokens)
+	assert.Equal(t, 5, usage.OutputTokens)
 
 	// Verify the request sent to provider
-	if len(mock.Requests) != 1 {
-		t.Fatalf("expected 1 request, got %d", len(mock.Requests))
-	}
-	if mock.Requests[0].Model != "mock-model" {
-		t.Fatalf("expected model %q, got %q", "mock-model", mock.Requests[0].Model)
-	}
+	require.Len(t, mock.Requests, 1)
+	assert.Equal(t, "mock-model", mock.Requests[0].Model)
 }
 
 func TestRun_ToolUseNoRegistry(t *testing.T) {
@@ -81,18 +68,12 @@ func TestRun_ToolUseNoRegistry(t *testing.T) {
 
 	a := New(mock, "mock-model", "test", nil)
 	text, err := a.Run(context.Background(), "list files")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if text != "No tools available." {
-		t.Fatalf("expected final text, got %q", text)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "No tools available.", text)
 
 	// Third message should be tool result with error
 	toolResult := a.Messages()[2]
-	if !toolResult.Content[0].IsError {
-		t.Fatal("tool result should be marked as error when no registry")
-	}
+	assert.True(t, toolResult.Content[0].IsError, "tool result should be marked as error when no registry")
 }
 
 func TestRun_ToolUseWithRegistry(t *testing.T) {
@@ -128,21 +109,13 @@ func TestRun_ToolUseWithRegistry(t *testing.T) {
 
 	a := New(mock, "mock-model", "test", reg)
 	text, err := a.Run(context.Background(), "read the file")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(text, "hello from file") {
-		t.Fatalf("expected final text to reference file content, got %q", text)
-	}
+	require.NoError(t, err)
+	assert.Contains(t, text, "hello from file")
 
 	// Verify tool result is NOT an error
 	toolResult := a.Messages()[2]
-	if toolResult.Content[0].IsError {
-		t.Fatalf("tool result should NOT be error, content: %s", toolResult.Content[0].Content)
-	}
-	if !strings.Contains(toolResult.Content[0].Content, "hello from file") {
-		t.Fatalf("tool result should contain file content, got: %s", toolResult.Content[0].Content)
-	}
+	assert.False(t, toolResult.Content[0].IsError, "tool result should NOT be error")
+	assert.Contains(t, toolResult.Content[0].Content, "hello from file")
 }
 
 func TestRun_MaxTokens(t *testing.T) {
@@ -156,12 +129,9 @@ func TestRun_MaxTokens(t *testing.T) {
 
 	a := New(mock, "mock-model", "test", nil)
 	text, err := a.Run(context.Background(), "write a long essay")
-	if text != "partial output..." {
-		t.Fatalf("expected partial text, got %q", text)
-	}
-	if err == nil || !strings.Contains(err.Error(), "max_tokens") {
-		t.Fatalf("expected max_tokens error, got: %v", err)
-	}
+	assert.Equal(t, "partial output...", text)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max_tokens")
 }
 
 func TestRun_ContextCancellation(t *testing.T) {
@@ -177,10 +147,6 @@ func TestRun_ContextCancellation(t *testing.T) {
 
 	a := New(mock, "mock-model", "test", nil)
 	_, err := a.Run(ctx, "hello")
-	if err == nil {
-		t.Fatal("expected context cancellation error")
-	}
-	if !strings.Contains(err.Error(), "canceled") {
-		t.Fatalf("expected canceled error, got: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "canceled")
 }

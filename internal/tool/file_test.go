@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFileReadTool_Execute(t *testing.T) {
@@ -19,38 +21,26 @@ func TestFileReadTool_Execute(t *testing.T) {
 	t.Run("read all", func(t *testing.T) {
 		input, _ := json.Marshal(fileReadInput{FilePath: path})
 		result, err := tool.Execute(context.Background(), input)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !strings.Contains(result, "line1") || !strings.Contains(result, "line5") {
-			t.Fatalf("expected all lines, got:\n%s", result)
-		}
-		// Check line numbers
-		if !strings.Contains(result, "     1\t") {
-			t.Fatalf("expected line numbers, got:\n%s", result)
-		}
+		require.NoError(t, err)
+		assert.Contains(t, result, "line1")
+		assert.Contains(t, result, "line5")
+		assert.Contains(t, result, "     1\t", "expected line numbers")
 	})
 
 	t.Run("offset and limit", func(t *testing.T) {
 		input, _ := json.Marshal(fileReadInput{FilePath: path, Offset: 2, Limit: 2})
 		result, err := tool.Execute(context.Background(), input)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !strings.Contains(result, "line2") || !strings.Contains(result, "line3") {
-			t.Fatalf("expected lines 2-3, got:\n%s", result)
-		}
-		if strings.Contains(result, "line1") || strings.Contains(result, "line4") {
-			t.Fatalf("should not contain lines outside range, got:\n%s", result)
-		}
+		require.NoError(t, err)
+		assert.Contains(t, result, "line2")
+		assert.Contains(t, result, "line3")
+		assert.NotContains(t, result, "line1")
+		assert.NotContains(t, result, "line4")
 	})
 
 	t.Run("missing file", func(t *testing.T) {
 		input, _ := json.Marshal(fileReadInput{FilePath: "/nonexistent/file.txt"})
 		_, err := tool.Execute(context.Background(), input)
-		if err == nil {
-			t.Fatal("expected error for missing file")
-		}
+		assert.Error(t, err)
 	})
 }
 
@@ -68,20 +58,12 @@ func TestFileEditTool_Execute(t *testing.T) {
 			NewString: "baz qux",
 		})
 		result, err := tool.Execute(context.Background(), input)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !strings.Contains(result, "Successfully edited") {
-			t.Fatalf("unexpected result: %s", result)
-		}
+		require.NoError(t, err)
+		assert.Contains(t, result, "Successfully edited")
 
 		data, _ := os.ReadFile(path)
-		if !strings.Contains(string(data), "baz qux") {
-			t.Fatalf("expected replacement, got: %s", string(data))
-		}
-		if strings.Contains(string(data), "foo bar") {
-			t.Fatalf("old string should be gone, got: %s", string(data))
-		}
+		assert.Contains(t, string(data), "baz qux")
+		assert.NotContains(t, string(data), "foo bar")
 	})
 
 	t.Run("non-unique without replace_all", func(t *testing.T) {
@@ -95,12 +77,8 @@ func TestFileEditTool_Execute(t *testing.T) {
 			NewString: "bbb",
 		})
 		_, err := tool.Execute(context.Background(), input)
-		if err == nil {
-			t.Fatal("expected error for non-unique match")
-		}
-		if !strings.Contains(err.Error(), "2 times") {
-			t.Fatalf("expected count in error, got: %v", err)
-		}
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "2 times")
 	})
 
 	t.Run("replace_all", func(t *testing.T) {
@@ -115,17 +93,11 @@ func TestFileEditTool_Execute(t *testing.T) {
 			ReplaceAll: true,
 		})
 		result, err := tool.Execute(context.Background(), input)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !strings.Contains(result, "3 occurrences") {
-			t.Fatalf("expected count in result, got: %s", result)
-		}
+		require.NoError(t, err)
+		assert.Contains(t, result, "3 occurrences")
 
 		data, _ := os.ReadFile(path)
-		if strings.Contains(string(data), "aaa") {
-			t.Fatalf("all occurrences should be replaced, got: %s", string(data))
-		}
+		assert.NotContains(t, string(data), "aaa")
 	})
 
 	t.Run("old_string not found", func(t *testing.T) {
@@ -139,8 +111,6 @@ func TestFileEditTool_Execute(t *testing.T) {
 			NewString: "replaced",
 		})
 		_, err := tool.Execute(context.Background(), input)
-		if err == nil {
-			t.Fatal("expected error for not found")
-		}
+		assert.Error(t, err)
 	})
 }
