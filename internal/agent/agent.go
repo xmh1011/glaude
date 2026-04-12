@@ -11,6 +11,7 @@ import (
 
 	"glaude/internal/llm"
 	"glaude/internal/telemetry"
+	"glaude/internal/tool"
 )
 
 // Agent drives the LLM loop for a single session.
@@ -21,15 +22,18 @@ type Agent struct {
 	messages     []llm.Message
 	maxTokens    int
 	totalUsage   llm.Usage
+	registry     *tool.Registry
 }
 
 // New creates an Agent bound to the given provider and model.
-func New(provider llm.Provider, model, systemPrompt string) *Agent {
+// The registry may be nil if no tools are available (tools will return errors).
+func New(provider llm.Provider, model, systemPrompt string, registry *tool.Registry) *Agent {
 	return &Agent{
 		provider:     provider,
 		model:        model,
 		systemPrompt: systemPrompt,
 		maxTokens:    4096,
+		registry:     registry,
 	}
 }
 
@@ -81,9 +85,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return resp.TextContent(), nil
 
 		case llm.StopToolUse:
-			// Execute tools and feed results back (Phase 2 will implement real tools).
-			// For now, return error results so the loop can continue or the caller
-			// can extract the text portion.
 			toolBlocks := resp.ToolUseBlocks()
 			if len(toolBlocks) == 0 {
 				return resp.TextContent(), nil
@@ -91,17 +92,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 			results := make([]llm.ContentBlock, 0, len(toolBlocks))
 			for _, tb := range toolBlocks {
-				results = append(results, llm.NewToolResultBlock(
-					tb.ID,
-					fmt.Sprintf("Error: tool %q is not yet implemented", tb.Name),
-					true,
-				))
+				result, isErr := a.executeTool(ctx, tb)
+				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
 			}
 			a.messages = append(a.messages, llm.Message{
 				Role:    llm.RoleUser,
 				Content: results,
 			})
-			// Continue the loop: the LLM will see the error and adapt
+			// Continue the loop: the LLM will see the result and decide next action
 
 		case llm.StopMaxTokens:
 			// Output was truncated; return what we have with an error
@@ -111,6 +109,43 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return resp.TextContent(), fmt.Errorf("unexpected stop reason: %s", resp.StopReason)
 		}
 	}
+}
+
+// executeTool dispatches a tool_use block to the Registry and returns the
+// result text and whether it's an error.
+func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
+	if a.registry == nil {
+		return fmt.Sprintf("Error: tool %q is not available (no registry)", tb.Name), true
+	}
+
+	t := a.registry.Get(tb.Name)
+	if t == nil {
+		return fmt.Sprintf("Error: tool %q not found", tb.Name), true
+	}
+
+	telemetry.Log.
+		WithField("tool", tb.Name).
+		WithField("tool_use_id", tb.ID).
+		Debug("executing tool")
+
+	result, err := t.Execute(ctx, tb.Input)
+	if err != nil {
+		telemetry.Log.
+			WithField("tool", tb.Name).
+			WithField("error", err.Error()).
+			Debug("tool execution error")
+		if result == "" {
+			result = err.Error()
+		}
+		return result, true
+	}
+
+	telemetry.Log.
+		WithField("tool", tb.Name).
+		WithField("result_len", len(result)).
+		Debug("tool execution success")
+
+	return result, false
 }
 
 // TotalUsage returns the cumulative token usage across all iterations.

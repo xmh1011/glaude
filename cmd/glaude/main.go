@@ -18,6 +18,7 @@ import (
 	"glaude/internal/config"
 	"glaude/internal/llm"
 	"glaude/internal/telemetry"
+	"glaude/internal/tool"
 )
 
 // version is set at build time via -ldflags.
@@ -86,7 +87,11 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
-				a := agent.New(provider, "claude-sonnet-4-20250514", "You are a helpful assistant.")
+				reg := tool.NewRegistry()
+				reg.Register(&tool.FileReadTool{})
+				reg.Register(&tool.FileEditTool{})
+				reg.Register(tool.NewBashTool())
+				a := agent.New(provider, "claude-sonnet-4-20250514", "You are a helpful assistant.", reg)
 				text, err := a.Run(cmd.Context(), prompt)
 
 				usage := a.TotalUsage()
