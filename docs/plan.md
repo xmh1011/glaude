@@ -191,23 +191,23 @@
 
 所有参考文档来自 [claude-reviews-claude](https://github.com/openedclaude/claude-reviews-claude) 项目，提供 Claude Code 各子系统的源码级架构解析（含源码链接），作为 Glaude 实现的参考蓝本。
 
-| 文档 | 主题 | 关联阶段 |
-|------|------|----------|
-| [`reference/00-overview.md`](./reference/00-overview.md) | 完整架构总览（17 篇浓缩版） | 全阶段通用 |
-| [`reference/01-query-engine.md`](./reference/01-query-engine.md) | 查询引擎：核心循环与流式处理 | Phase 1 |
-| [`reference/02-tool-system.md`](./reference/02-tool-system.md) | 工具系统：42 模块统一接口 | Phase 2/3 |
-| [`reference/03-coordinator.md`](./reference/03-coordinator.md) | 多智能体协调器 | Phase 8 |
-| [`reference/04-plugin-system.md`](./reference/04-plugin-system.md) | 插件系统：全生命周期管理 | Phase 8 |
-| [`reference/05-hook-system.md`](./reference/05-hook-system.md) | Hook 系统：20 种事件类型 | Phase 11 |
-| [`reference/06-bash-engine.md`](./reference/06-bash-engine.md) | Bash 执行引擎：沙箱与管道 | Phase 2/7 |
-| [`reference/07-permission-pipeline.md`](./reference/07-permission-pipeline.md) | 权限流水线：纵深防御 | Phase 7 |
-| [`reference/08-agent-swarms.md`](./reference/08-agent-swarms.md) | Agent 集群：团队协调 | Phase 8 |
-| [`reference/09-session-persistence.md`](./reference/09-session-persistence.md) | 会话持久化 | Phase 4/9 |
-| [`reference/10-context-assembly.md`](./reference/10-context-assembly.md) | 上下文装配 | Phase 3/6 |
-| [`reference/11-compact-system.md`](./reference/11-compact-system.md) | 压缩系统：多层架构 | Phase 6 |
-| [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md) | 启动与引导 | Phase 0/1/10/11 |
-| [`reference/13-bridge-system.md`](./reference/13-bridge-system.md) | 桥接系统：远程控制协议 | Phase 8 |
-| [`reference/14-ui-state.md`](./reference/14-ui-state.md) | UI 与状态管理 | Phase 5/10 |
-| [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md) | 服务层与 API 架构 | Phase 1/9/10 |
-| [`reference/16-infrastructure-config.md`](./reference/16-infrastructure-config.md) | 基础设施与配置 | Phase 0/4 |
-| [`reference/17-telemetry-privacy-operations.md`](./reference/17-telemetry-privacy-operations.md) | 遥测、隐私与运营 | Phase 0 |
+| 文档                                                                                               | 主题               | 关联阶段            |
+|--------------------------------------------------------------------------------------------------|------------------|-----------------|
+| [`reference/00-overview.md`](./reference/00-overview.md)                                         | 完整架构总览（17 篇浓缩版）  | 全阶段通用           |
+| [`reference/01-query-engine.md`](./reference/01-query-engine.md)                                 | 查询引擎：核心循环与流式处理   | Phase 1         |
+| [`reference/02-tool-system.md`](./reference/02-tool-system.md)                                   | 工具系统：42 模块统一接口   | Phase 2/3       |
+| [`reference/03-coordinator.md`](./reference/03-coordinator.md)                                   | 多智能体协调器          | Phase 8         |
+| [`reference/04-plugin-system.md`](./reference/04-plugin-system.md)                               | 插件系统：全生命周期管理     | Phase 8         |
+| [`reference/05-hook-system.md`](./reference/05-hook-system.md)                                   | Hook 系统：20 种事件类型 | Phase 11        |
+| [`reference/06-bash-engine.md`](./reference/06-bash-engine.md)                                   | Bash 执行引擎：沙箱与管道  | Phase 2/7       |
+| [`reference/07-permission-pipeline.md`](./reference/07-permission-pipeline.md)                   | 权限流水线：纵深防御       | Phase 7         |
+| [`reference/08-agent-swarms.md`](./reference/08-agent-swarms.md)                                 | Agent 集群：团队协调    | Phase 8         |
+| [`reference/09-session-persistence.md`](./reference/09-session-persistence.md)                   | 会话持久化            | Phase 4/9       |
+| [`reference/10-context-assembly.md`](./reference/10-context-assembly.md)                         | 上下文装配            | Phase 3/6       |
+| [`reference/11-compact-system.md`](./reference/11-compact-system.md)                             | 压缩系统：多层架构        | Phase 6         |
+| [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)                       | 启动与引导            | Phase 0/1/10/11 |
+| [`reference/13-bridge-system.md`](./reference/13-bridge-system.md)                               | 桥接系统：远程控制协议      | Phase 8         |
+| [`reference/14-ui-state.md`](./reference/14-ui-state.md)                                         | UI 与状态管理         | Phase 5/10      |
+| [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)                     | 服务层与 API 架构      | Phase 1/9/10    |
+| [`reference/16-infrastructure-config.md`](./reference/16-infrastructure-config.md)               | 基础设施与配置          | Phase 0/4       |
+| [`reference/17-telemetry-privacy-operations.md`](./reference/17-telemetry-privacy-operations.md) | 遥测、隐私与运营         | Phase 0         |
