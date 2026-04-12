@@ -1,4 +1,4 @@
-package tool
+package globtool
 
 import (
 	"context"
@@ -10,25 +10,18 @@ import (
 	"strings"
 
 	"github.com/xmh1011/glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
-const globMaxResults = 100
-
-// defaultExcludes are directories always excluded from glob/grep results.
-var defaultExcludes = []string{
-	".git",
-	"node_modules",
-	"vendor",
-	"__pycache__",
-	".DS_Store",
-}
+const MaxResults = 100
 
 // GlobTool finds files matching a glob pattern.
 // Results are sorted by modification time (most recent first) and
-// capped at 100 entries. Always excludes .git, node_modules, etc.
+// capped at MaxResults entries. Always excludes .git, node_modules, etc.
 type GlobTool struct{}
 
-type globInput struct {
+// Input is the parsed input for the Glob tool.
+type Input struct {
 	Pattern string `json:"pattern"`
 	Path    string `json:"path"`
 }
@@ -57,7 +50,7 @@ func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 		return "", err
 	}
 
-	var in globInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
@@ -94,7 +87,7 @@ func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 		// Exclude default directories
 		if info.IsDir() {
 			base := info.Name()
-			for _, ex := range defaultExcludes {
+			for _, ex := range tool.DefaultExcludes {
 				if base == ex {
 					return filepath.SkipDir
 				}
@@ -139,8 +132,8 @@ func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 
 	// Cap results
 	truncated := false
-	if len(matches) > globMaxResults {
-		matches = matches[:globMaxResults]
+	if len(matches) > MaxResults {
+		matches = matches[:MaxResults]
 		truncated = true
 	}
 
@@ -153,7 +146,7 @@ func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 		fmt.Fprintln(&b, m.path)
 	}
 	if truncated {
-		fmt.Fprintf(&b, "\n(results truncated to %d entries)\n", globMaxResults)
+		fmt.Fprintf(&b, "\n(results truncated to %d entries)\n", MaxResults)
 	}
 
 	telemetry.Log.

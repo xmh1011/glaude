@@ -1,4 +1,4 @@
-package tool
+package filewritetool
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func TestFileWriteTool_Execute(t *testing.T) {
 		tmp := t.TempDir()
 		path := filepath.Join(tmp, "new.txt")
 
-		input, _ := json.Marshal(fileWriteInput{FilePath: path, Content: "hello world"})
+		input, _ := json.Marshal(Input{FilePath: path, Content: "hello world"})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "Successfully wrote")
@@ -31,7 +31,7 @@ func TestFileWriteTool_Execute(t *testing.T) {
 		tmp := t.TempDir()
 		path := filepath.Join(tmp, "a", "b", "c", "deep.txt")
 
-		input, _ := json.Marshal(fileWriteInput{FilePath: path, Content: "deep content"})
+		input, _ := json.Marshal(Input{FilePath: path, Content: "deep content"})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "Successfully wrote")
@@ -45,7 +45,7 @@ func TestFileWriteTool_Execute(t *testing.T) {
 		path := filepath.Join(tmp, "exist.txt")
 		os.WriteFile(path, []byte("old"), 0644)
 
-		input, _ := json.Marshal(fileWriteInput{FilePath: path, Content: "new"})
+		input, _ := json.Marshal(Input{FilePath: path, Content: "new"})
 		_, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 

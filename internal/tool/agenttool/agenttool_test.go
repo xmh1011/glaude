@@ -1,4 +1,4 @@
-package tool
+package agenttool
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/tool/filereadtool"
 )
 
 // mockSubAgentProvider returns a simple text response on first call.
@@ -71,7 +73,7 @@ func TestAgentTool_Execute_BasicConclusion(t *testing.T) {
 		Model:    "test-model",
 	}
 
-	input, _ := json.Marshal(agentToolInput{
+	input, _ := json.Marshal(Input{
 		Prompt:      "What is the meaning of life?",
 		Description: "test sub-agent",
 	})
@@ -84,7 +86,7 @@ func TestAgentTool_Execute_BasicConclusion(t *testing.T) {
 
 func TestAgentTool_Execute_EmptyPrompt(t *testing.T) {
 	a := &AgentTool{Provider: &mockSubAgentProvider{}}
-	input, _ := json.Marshal(agentToolInput{})
+	input, _ := json.Marshal(Input{})
 	_, err := a.Execute(context.Background(), input)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "prompt is required")
@@ -92,8 +94,8 @@ func TestAgentTool_Execute_EmptyPrompt(t *testing.T) {
 
 func TestAgentTool_Execute_WithToolUse(t *testing.T) {
 	provider := &mockToolUseProvider{}
-	reg := NewRegistry()
-	reg.Register(&FileReadTool{})
+	reg := tool.NewRegistry()
+	reg.Register(&filereadtool.FileReadTool{})
 
 	a := &AgentTool{
 		Provider: provider,
@@ -101,7 +103,7 @@ func TestAgentTool_Execute_WithToolUse(t *testing.T) {
 		Registry: reg,
 	}
 
-	input, _ := json.Marshal(agentToolInput{
+	input, _ := json.Marshal(Input{
 		Prompt: "Read a file for me",
 	})
 
@@ -118,16 +120,16 @@ func TestAgentTool_Execute_CancelledContext(t *testing.T) {
 	cancel()
 
 	a := &AgentTool{Provider: &mockSubAgentProvider{}}
-	input, _ := json.Marshal(agentToolInput{Prompt: "test"})
+	input, _ := json.Marshal(Input{Prompt: "test"})
 	_, err := a.Execute(ctx, input)
 	assert.Error(t, err)
 }
 
 func TestAgentTool_BlocksRecursion(t *testing.T) {
-	reg := NewRegistry()
+	reg := tool.NewRegistry()
 	reg.Register(&AgentTool{})
 	a := &AgentTool{Registry: reg}
-	result, isErr := a.executeTool(context.Background(), llm.ContentBlock{
+	result, isErr := a.ExecuteTool(context.Background(), llm.ContentBlock{
 		Type:  llm.ContentToolUse,
 		Name:  "Agent",
 		Input: json.RawMessage(`{"prompt":"nested"}`),
@@ -137,8 +139,8 @@ func TestAgentTool_BlocksRecursion(t *testing.T) {
 }
 
 func TestAgentTool_ExcludesSelfFromToolDefs(t *testing.T) {
-	reg := NewRegistry()
-	reg.Register(&FileReadTool{})
+	reg := tool.NewRegistry()
+	reg.Register(&filereadtool.FileReadTool{})
 	reg.Register(&AgentTool{})
 
 	a := &AgentTool{Registry: reg}

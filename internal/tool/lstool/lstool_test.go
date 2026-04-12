@@ -1,4 +1,4 @@
-package tool
+package lstool
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestLSTool_Execute(t *testing.T) {
 		os.MkdirAll(filepath.Join(tmp, "subdir"), 0755)
 		os.WriteFile(filepath.Join(tmp, "file.txt"), []byte("hello"), 0644)
 
-		input, _ := json.Marshal(lsInput{Path: tmp})
+		input, _ := json.Marshal(Input{Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "file.txt")
@@ -30,14 +30,14 @@ func TestLSTool_Execute(t *testing.T) {
 	t.Run("empty directory", func(t *testing.T) {
 		tmp := t.TempDir()
 
-		input, _ := json.Marshal(lsInput{Path: tmp})
+		input, _ := json.Marshal(Input{Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "empty directory")
 	})
 
 	t.Run("nonexistent directory", func(t *testing.T) {
-		input, _ := json.Marshal(lsInput{Path: "/nonexistent_xyz"})
+		input, _ := json.Marshal(Input{Path: "/nonexistent_xyz"})
 		_, err := tool.Execute(context.Background(), input)
 		assert.Error(t, err)
 	})

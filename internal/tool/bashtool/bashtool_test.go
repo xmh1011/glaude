@@ -1,4 +1,4 @@
-package tool
+package bashtool
 
 import (
 	"context"
@@ -12,40 +12,40 @@ import (
 )
 
 func TestBashTool_SimpleCommand(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
-	input, _ := json.Marshal(bashInput{Command: "echo hello"})
+	input, _ := json.Marshal(Input{Command: "echo hello"})
 	result, err := bt.Execute(context.Background(), input)
 	require.NoError(t, err)
 	assert.Equal(t, "hello", strings.TrimSpace(result))
 }
 
 func TestBashTool_StatePersistence(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
 	// Set a variable
-	input1, _ := json.Marshal(bashInput{Command: "export MY_TEST_VAR=glaude42"})
+	input1, _ := json.Marshal(Input{Command: "export MY_TEST_VAR=glaude42"})
 	_, err := bt.Execute(context.Background(), input1)
 	require.NoError(t, err)
 
 	// Read it back - should persist across calls
-	input2, _ := json.Marshal(bashInput{Command: "echo $MY_TEST_VAR"})
+	input2, _ := json.Marshal(Input{Command: "echo $MY_TEST_VAR"})
 	result, err := bt.Execute(context.Background(), input2)
 	require.NoError(t, err)
 	assert.Equal(t, "glaude42", strings.TrimSpace(result))
 }
 
 func TestBashTool_CdPersistence(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
-	input1, _ := json.Marshal(bashInput{Command: "cd /tmp"})
+	input1, _ := json.Marshal(Input{Command: "cd /tmp"})
 	_, err := bt.Execute(context.Background(), input1)
 	require.NoError(t, err)
 
-	input2, _ := json.Marshal(bashInput{Command: "pwd"})
+	input2, _ := json.Marshal(Input{Command: "pwd"})
 	result, err := bt.Execute(context.Background(), input2)
 	require.NoError(t, err)
 	// On macOS /tmp is a symlink to /private/tmp
@@ -55,20 +55,20 @@ func TestBashTool_CdPersistence(t *testing.T) {
 }
 
 func TestBashTool_NonZeroExit(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
-	input, _ := json.Marshal(bashInput{Command: "ls /nonexistent_path_xyz"})
+	input, _ := json.Marshal(Input{Command: "ls /nonexistent_path_xyz"})
 	_, err := bt.Execute(context.Background(), input)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exited with code")
 }
 
 func TestBashTool_StderrMerged(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
-	input, _ := json.Marshal(bashInput{Command: "echo stdout; echo stderr >&2"})
+	input, _ := json.Marshal(Input{Command: "echo stdout; echo stderr >&2"})
 	result, err := bt.Execute(context.Background(), input)
 	require.NoError(t, err)
 	assert.Contains(t, result, "stdout")
@@ -76,11 +76,11 @@ func TestBashTool_StderrMerged(t *testing.T) {
 }
 
 func TestBashTool_Timeout(t *testing.T) {
-	bt := NewBashTool()
-	bt.timeout = 1 * time.Second
+	bt := New()
+	bt.SetTimeout(1 * time.Second)
 	defer bt.Close()
 
-	input, _ := json.Marshal(bashInput{Command: "sleep 30"})
+	input, _ := json.Marshal(Input{Command: "sleep 30"})
 	start := time.Now()
 	_, err := bt.Execute(context.Background(), input)
 	elapsed := time.Since(start)
@@ -91,10 +91,10 @@ func TestBashTool_Timeout(t *testing.T) {
 }
 
 func TestBashTool_MultilineOutput(t *testing.T) {
-	bt := NewBashTool()
+	bt := New()
 	defer bt.Close()
 
-	input, _ := json.Marshal(bashInput{Command: "for i in 1 2 3 4 5; do echo line$i; done"})
+	input, _ := json.Marshal(Input{Command: "for i in 1 2 3 4 5; do echo line$i; done"})
 	result, err := bt.Execute(context.Background(), input)
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(result), "\n")

@@ -1,4 +1,4 @@
-package tool
+package fileedittool
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestFileEditTool_Execute(t *testing.T) {
 		path := filepath.Join(tmp, "test.txt")
 		os.WriteFile(path, []byte("hello world\nfoo bar\n"), 0644)
 
-		input, _ := json.Marshal(fileEditInput{
+		input, _ := json.Marshal(Input{
 			FilePath:  path,
 			OldString: "foo bar",
 			NewString: "baz qux",
@@ -38,7 +38,7 @@ func TestFileEditTool_Execute(t *testing.T) {
 		path := filepath.Join(tmp, "test.txt")
 		os.WriteFile(path, []byte("aaa\naaa\n"), 0644)
 
-		input, _ := json.Marshal(fileEditInput{
+		input, _ := json.Marshal(Input{
 			FilePath:  path,
 			OldString: "aaa",
 			NewString: "bbb",
@@ -53,7 +53,7 @@ func TestFileEditTool_Execute(t *testing.T) {
 		path := filepath.Join(tmp, "test.txt")
 		os.WriteFile(path, []byte("aaa\naaa\naaa\n"), 0644)
 
-		input, _ := json.Marshal(fileEditInput{
+		input, _ := json.Marshal(Input{
 			FilePath:   path,
 			OldString:  "aaa",
 			NewString:  "bbb",
@@ -72,7 +72,7 @@ func TestFileEditTool_Execute(t *testing.T) {
 		path := filepath.Join(tmp, "test.txt")
 		os.WriteFile(path, []byte("hello\n"), 0644)
 
-		input, _ := json.Marshal(fileEditInput{
+		input, _ := json.Marshal(Input{
 			FilePath:  path,
 			OldString: "missing",
 			NewString: "replaced",

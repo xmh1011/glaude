@@ -1,4 +1,4 @@
-package tool
+package greptool
 
 import (
 	"context"
@@ -6,18 +6,19 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/xmh1011/glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
-const grepMaxResults = 250
+const MaxResults = 250
 
 // GrepTool searches file contents using ripgrep (rg) or grep.
-// Results are capped at 250 matches. Always excludes .git, node_modules, etc.
+// Results are capped at MaxResults matches. Always excludes .git, node_modules, etc.
 type GrepTool struct{}
 
-type grepInput struct {
+// Input is the parsed input for the Grep tool.
+type Input struct {
 	Pattern    string `json:"pattern"`
 	Path       string `json:"path"`
 	Glob       string `json:"glob"`
@@ -50,7 +51,7 @@ func (g *GrepTool) InputSchema() json.RawMessage {
 func (g *GrepTool) IsReadOnly() bool { return true }
 
 func (g *GrepTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
-	var in grepInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
@@ -74,16 +75,16 @@ func (g *GrepTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 	return g.execRg(ctx, rgPath, in, searchPath)
 }
 
-func (g *GrepTool) execRg(ctx context.Context, rgPath string, in grepInput, searchPath string) (string, error) {
+func (g *GrepTool) execRg(ctx context.Context, rgPath string, in Input, searchPath string) (string, error) {
 	args := []string{
 		"--no-heading",
 		"--line-number",
 		"--color", "never",
-		"--max-count", strconv.Itoa(grepMaxResults),
+		"--max-count", strconv.Itoa(MaxResults),
 	}
 
 	// Exclude default directories
-	for _, ex := range defaultExcludes {
+	for _, ex := range tool.DefaultExcludes {
 		args = append(args, "--glob", "!"+ex)
 	}
 
@@ -130,7 +131,7 @@ func (g *GrepTool) execRg(ctx context.Context, rgPath string, in grepInput, sear
 		return "", fmt.Errorf("running rg: %w", err)
 	}
 
-	result = truncateLines(result, grepMaxResults)
+	result = tool.TruncateLines(result, MaxResults)
 
 	telemetry.Log.
 		WithField("pattern", in.Pattern).
@@ -140,14 +141,14 @@ func (g *GrepTool) execRg(ctx context.Context, rgPath string, in grepInput, sear
 	return result, nil
 }
 
-func (g *GrepTool) execGrep(ctx context.Context, in grepInput, searchPath string) (string, error) {
+func (g *GrepTool) execGrep(ctx context.Context, in Input, searchPath string) (string, error) {
 	args := []string{
 		"-r", "-n",
 		"--color=never",
 	}
 
 	// Exclude default directories
-	for _, ex := range defaultExcludes {
+	for _, ex := range tool.DefaultExcludes {
 		args = append(args, "--exclude-dir="+ex)
 	}
 
@@ -187,16 +188,6 @@ func (g *GrepTool) execGrep(ctx context.Context, in grepInput, searchPath string
 		return "", fmt.Errorf("running grep: %w", err)
 	}
 
-	result = truncateLines(result, grepMaxResults)
+	result = tool.TruncateLines(result, MaxResults)
 	return result, nil
-}
-
-// truncateLines limits output to maxLines.
-func truncateLines(s string, maxLines int) string {
-	lines := strings.Split(s, "\n")
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-		lines = append(lines, fmt.Sprintf("\n(results truncated to %d lines)", maxLines))
-	}
-	return strings.Join(lines, "\n")
 }
