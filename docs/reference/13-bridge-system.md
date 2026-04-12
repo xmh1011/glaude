@@ -249,3 +249,33 @@ await writeBridgePointer(dir, {
 
 ---
 
+## 设计哲学
+
+> 以下内容提炼自设计深潜系列，阐述 Bridge 与多端架构背后的设计理念。
+
+### Bridge 真正的对象不是传输协议，而是会话连续性
+
+Claude Code 不是单一终端程序。Bridge 把"会话"从单进程事实升级成跨端可投递、可恢复、可观察的实体——从单机 REPL 提升到多端 session runtime。
+
+### 读写分离：远程会话不是对称 socket 管道
+
+v2 路径明确把读写拆开：读通过 SSE stream、写通过 CCRClient。一旦把远程会话看成事件日志系统，sequence number 恢复、high-water mark、delivery 状态、epoch 失配重连、metadata/heartbeat 独立上报就自然成立。
+
+### Sequence number 与 epoch 是会话连续性的基础坐标
+
+Bridge 的常态不是"稳定长连接"，而是"不断恢复的连接"。sequence number 解决"从哪继续读"，epoch 解决"我还是不是这次执行的合法 worker"。
+
+### CCRClient：Claude Code 在远程架构中是受监管 worker
+
+不只是传消息，还负责 heartbeat、reportState、reportMetadata、reportDelivery。控制面最怕的不是"消息慢一点"，而是"不知道这个 session 到底死没死、卡没卡、在等什么"。**状态上报是远程会话的第一公民**。
+
+### IDE 集成：多端架构最怕错误绑定
+
+连上一个不属于当前上下文的 IDE，后果比没连上更糟。Claude Code 追求的不是"能连上 IDE"，而是"能把当前会话**正确地绑定到正确的 IDE 实例**"。
+
+### 核心原理
+
+Bridge 真正做的是把"本地 agent"提升成"多端共享 session"：把代理运行时从单进程私有状态，转化成一个**可恢复、可转移、可观测的会话实体**。
+
+---
+
