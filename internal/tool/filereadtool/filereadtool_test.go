@@ -1,4 +1,4 @@
-package tool
+package filereadtool
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestFileReadTool_Execute(t *testing.T) {
 	tool := &FileReadTool{}
 
 	t.Run("read all", func(t *testing.T) {
-		input, _ := json.Marshal(fileReadInput{FilePath: path})
+		input, _ := json.Marshal(Input{FilePath: path})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "line1")
@@ -28,7 +28,7 @@ func TestFileReadTool_Execute(t *testing.T) {
 	})
 
 	t.Run("offset and limit", func(t *testing.T) {
-		input, _ := json.Marshal(fileReadInput{FilePath: path, Offset: 2, Limit: 2})
+		input, _ := json.Marshal(Input{FilePath: path, Offset: 2, Limit: 2})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "line2")
@@ -38,7 +38,7 @@ func TestFileReadTool_Execute(t *testing.T) {
 	})
 
 	t.Run("missing file", func(t *testing.T) {
-		input, _ := json.Marshal(fileReadInput{FilePath: "/nonexistent/file.txt"})
+		input, _ := json.Marshal(Input{FilePath: "/nonexistent/file.txt"})
 		_, err := tool.Execute(context.Background(), input)
 		assert.Error(t, err)
 	})

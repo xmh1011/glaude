@@ -1,4 +1,4 @@
-package tool
+package filereadtool
 
 import (
 	"context"
@@ -11,7 +11,8 @@ import (
 // FileReadTool reads file contents with optional offset and line limit.
 type FileReadTool struct{}
 
-type fileReadInput struct {
+// Input is the parsed input for the Read tool.
+type Input struct {
 	FilePath string `json:"file_path"`
 	Offset   int    `json:"offset"`
 	Limit    int    `json:"limit"`
@@ -42,7 +43,7 @@ func (f *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (stri
 		return "", err
 	}
 
-	var in fileReadInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}

@@ -1,4 +1,4 @@
-package tool
+package filewritetool
 
 import (
 	"context"
@@ -16,7 +16,8 @@ type FileWriteTool struct {
 	Checkpoint *memory.Checkpoint
 }
 
-type fileWriteInput struct {
+// Input is the parsed input for the Write tool.
+type Input struct {
 	FilePath string `json:"file_path"`
 	Content  string `json:"content"`
 }
@@ -45,7 +46,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (str
 		return "", err
 	}
 
-	var in fileWriteInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}

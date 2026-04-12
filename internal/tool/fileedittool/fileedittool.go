@@ -1,4 +1,4 @@
-package tool
+package fileedittool
 
 import (
 	"context"
@@ -17,7 +17,8 @@ type FileEditTool struct {
 	Checkpoint *memory.Checkpoint
 }
 
-type fileEditInput struct {
+// Input is the parsed input for the Edit tool.
+type Input struct {
 	FilePath   string `json:"file_path"`
 	OldString  string `json:"old_string"`
 	NewString  string `json:"new_string"`
@@ -50,7 +51,7 @@ func (f *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (stri
 		return "", err
 	}
 
-	var in fileEditInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}

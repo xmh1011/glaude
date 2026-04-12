@@ -1,4 +1,4 @@
-package tool
+package lstool
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 // LSTool lists directory contents (non-recursive).
 type LSTool struct{}
 
-type lsInput struct {
+// Input is the parsed input for the LS tool.
+type Input struct {
 	Path string `json:"path"`
 }
 
@@ -38,7 +39,7 @@ func (l *LSTool) Execute(ctx context.Context, input json.RawMessage) (string, er
 		return "", err
 	}
 
-	var in lsInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}

@@ -1,4 +1,4 @@
-package tool
+package globtool
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func TestGlobTool_Execute(t *testing.T) {
 	tool := &GlobTool{}
 
 	t.Run("match go files", func(t *testing.T) {
-		input, _ := json.Marshal(globInput{Pattern: "*.go", Path: tmp})
+		input, _ := json.Marshal(Input{Pattern: "*.go", Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "main.go")
@@ -36,7 +36,7 @@ func TestGlobTool_Execute(t *testing.T) {
 	})
 
 	t.Run("excludes .git", func(t *testing.T) {
-		input, _ := json.Marshal(globInput{Pattern: "*", Path: tmp})
+		input, _ := json.Marshal(Input{Pattern: "*", Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.NotContains(t, result, ".git")
@@ -44,7 +44,7 @@ func TestGlobTool_Execute(t *testing.T) {
 	})
 
 	t.Run("excludes node_modules", func(t *testing.T) {
-		input, _ := json.Marshal(globInput{Pattern: "*.js", Path: tmp})
+		input, _ := json.Marshal(Input{Pattern: "*.js", Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.NotContains(t, result, "node_modules")
@@ -52,14 +52,14 @@ func TestGlobTool_Execute(t *testing.T) {
 	})
 
 	t.Run("no matches", func(t *testing.T) {
-		input, _ := json.Marshal(globInput{Pattern: "*.xyz", Path: tmp})
+		input, _ := json.Marshal(Input{Pattern: "*.xyz", Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "No files matched")
 	})
 
 	t.Run("double star pattern", func(t *testing.T) {
-		input, _ := json.Marshal(globInput{Pattern: "**/*.go", Path: tmp})
+		input, _ := json.Marshal(Input{Pattern: "**/*.go", Path: tmp})
 		result, err := tool.Execute(context.Background(), input)
 		require.NoError(t, err)
 		assert.Contains(t, result, "main.go")

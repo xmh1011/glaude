@@ -24,6 +24,14 @@ import (
 	"github.com/xmh1011/glaude/internal/prompt"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/tool/agenttool"
+	"github.com/xmh1011/glaude/internal/tool/bashtool"
+	"github.com/xmh1011/glaude/internal/tool/fileedittool"
+	"github.com/xmh1011/glaude/internal/tool/filereadtool"
+	"github.com/xmh1011/glaude/internal/tool/filewritetool"
+	"github.com/xmh1011/glaude/internal/tool/globtool"
+	"github.com/xmh1011/glaude/internal/tool/greptool"
+	"github.com/xmh1011/glaude/internal/tool/lstool"
 	"github.com/xmh1011/glaude/internal/ui"
 )
 
@@ -187,13 +195,13 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *
 		cp = memory.NewCheckpoint()
 	}
 	reg := tool.NewRegistry()
-	reg.Register(&tool.FileReadTool{})
-	reg.Register(&tool.FileEditTool{Checkpoint: cp})
-	reg.Register(&tool.FileWriteTool{Checkpoint: cp})
-	reg.Register(tool.NewBashTool())
-	reg.Register(&tool.GlobTool{})
-	reg.Register(&tool.GrepTool{})
-	reg.Register(&tool.LSTool{})
-	reg.Register(&tool.AgentTool{Provider: provider, Model: model, Registry: reg})
+	reg.Register(&filereadtool.FileReadTool{})
+	reg.Register(&fileedittool.FileEditTool{Checkpoint: cp})
+	reg.Register(&filewritetool.FileWriteTool{Checkpoint: cp})
+	reg.Register(bashtool.New())
+	reg.Register(&globtool.GlobTool{})
+	reg.Register(&greptool.GrepTool{})
+	reg.Register(&lstool.LSTool{})
+	reg.Register(&agenttool.AgentTool{Provider: provider, Model: model, Registry: reg})
 	return reg
 }

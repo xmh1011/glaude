@@ -1,4 +1,4 @@
-package tool
+package agenttool
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/xmh1011/glaude/internal/compact"
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 // AgentTool spawns an isolated sub-agent with its own context budget and
@@ -17,10 +18,11 @@ import (
 type AgentTool struct {
 	Provider llm.Provider
 	Model    string
-	Registry *Registry
+	Registry *tool.Registry
 }
 
-type agentToolInput struct {
+// Input is the parsed input for the Agent tool.
+type Input struct {
 	Prompt      string `json:"prompt"`
 	SubAgent    string `json:"subagent_type"`
 	Description string `json:"description"`
@@ -53,7 +55,7 @@ func (a *AgentTool) Execute(ctx context.Context, input json.RawMessage) (string,
 		return "", err
 	}
 
-	var in agentToolInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
@@ -153,7 +155,7 @@ func (a *AgentTool) runSubAgent(ctx context.Context, systemPrompt, prompt string
 
 			results := make([]llm.ContentBlock, 0, len(toolBlocks))
 			for _, tb := range toolBlocks {
-				result, isErr := a.executeTool(ctx, tb)
+				result, isErr := a.ExecuteTool(ctx, tb)
 				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
 			}
 			messages = append(messages, llm.Message{
@@ -175,8 +177,8 @@ func (a *AgentTool) runSubAgent(ctx context.Context, systemPrompt, prompt string
 		fmt.Errorf("sub-agent reached max iterations (%d)", maxIterations)
 }
 
-// executeTool dispatches to the Registry.
-func (a *AgentTool) executeTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
+// ExecuteTool dispatches to the Registry (exported for testing).
+func (a *AgentTool) ExecuteTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
 	if a.Registry == nil {
 		return fmt.Sprintf("Error: tool %q not available", tb.Name), true
 	}

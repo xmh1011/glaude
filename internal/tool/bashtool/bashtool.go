@@ -1,4 +1,4 @@
-package tool
+package bashtool
 
 import (
 	"bufio"
@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	bashMaxOutputBytes = 100 * 1024 // 100KB output limit
-	bashDefaultTimeout = 120 * time.Second
+	MaxOutputBytes = 100 * 1024 // 100KB output limit
+	DefaultTimeout = 120 * time.Second
 )
 
 // BashTool executes shell commands in a persistent bash subprocess.
@@ -33,10 +33,10 @@ type BashTool struct {
 	timeout time.Duration
 }
 
-// NewBashTool creates a BashTool. The shell subprocess is started lazily
+// New creates a BashTool. The shell subprocess is started lazily
 // on the first Execute call.
-func NewBashTool() *BashTool {
-	return &BashTool{timeout: bashDefaultTimeout}
+func New() *BashTool {
+	return &BashTool{timeout: DefaultTimeout}
 }
 
 func (b *BashTool) Name() string { return "Bash" }
@@ -59,14 +59,15 @@ func (b *BashTool) InputSchema() json.RawMessage {
 
 func (b *BashTool) IsReadOnly() bool { return false }
 
-type bashInput struct {
+// Input is the parsed input for the Bash tool.
+type Input struct {
 	Command     string `json:"command"`
 	Timeout     int    `json:"timeout"`
 	Description string `json:"description"`
 }
 
 func (b *BashTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
-	var in bashInput
+	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
@@ -106,6 +107,11 @@ func (b *BashTool) Close() {
 		b.shell.close()
 		b.shell = nil
 	}
+}
+
+// SetTimeout sets the default command timeout (for testing).
+func (b *BashTool) SetTimeout(d time.Duration) {
+	b.timeout = d
 }
 
 // persistentShell manages a long-lived bash process.
@@ -213,7 +219,7 @@ func (s *persistentShell) exec(ctx context.Context, command string, timeout time
 			}
 
 			if !truncated {
-				if b.Len()+len(line)+1 > bashMaxOutputBytes {
+				if b.Len()+len(line)+1 > MaxOutputBytes {
 					b.WriteString("\n... (output truncated at 100KB)")
 					truncated = true
 				} else {
