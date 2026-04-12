@@ -36,7 +36,11 @@ func (f *FileWriteTool) InputSchema() json.RawMessage {
 
 func (f *FileWriteTool) IsReadOnly() bool { return false }
 
-func (f *FileWriteTool) Execute(_ context.Context, input json.RawMessage) (string, error) {
+func (f *FileWriteTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	var in fileWriteInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)

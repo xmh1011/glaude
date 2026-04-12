@@ -37,7 +37,11 @@ func (f *FileReadTool) InputSchema() json.RawMessage {
 
 func (f *FileReadTool) IsReadOnly() bool { return true }
 
-func (f *FileReadTool) Execute(_ context.Context, input json.RawMessage) (string, error) {
+func (f *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	var in fileReadInput
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
