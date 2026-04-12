@@ -17,6 +17,7 @@ import (
 	"glaude/internal/agent"
 	"glaude/internal/config"
 	"glaude/internal/llm"
+	"glaude/internal/memory"
 	"glaude/internal/prompt"
 	"glaude/internal/telemetry"
 	"glaude/internal/tool"
@@ -89,7 +90,16 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 				provider := llm.NewAnthropicProvider("")
 				reg := buildRegistry()
-				sysPrompt := prompt.NewBuilder().Build()
+
+				// Load directive files (GLAUDE.md) from all tiers
+				cwd, _ := os.Getwd()
+				mem := &memory.FileStore{}
+				instructions, err := mem.Load(cwd)
+				if err != nil {
+					telemetry.Log.WithField("error", err.Error()).Warn("failed to load directives")
+				}
+
+				sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
 				a := agent.New(provider, "claude-sonnet-4-20250514", sysPrompt, reg)
 				text, err := a.Run(cmd.Context(), userPrompt)
 
@@ -136,10 +146,11 @@ func buildVersionCmd() *cobra.Command {
 
 // buildRegistry creates a tool registry with all built-in tools.
 func buildRegistry() *tool.Registry {
+	cp := memory.NewCheckpoint()
 	reg := tool.NewRegistry()
 	reg.Register(&tool.FileReadTool{})
-	reg.Register(&tool.FileEditTool{})
-	reg.Register(&tool.FileWriteTool{})
+	reg.Register(&tool.FileEditTool{Checkpoint: cp})
+	reg.Register(&tool.FileWriteTool{Checkpoint: cp})
 	reg.Register(tool.NewBashTool())
 	reg.Register(&tool.GlobTool{})
 	reg.Register(&tool.GrepTool{})

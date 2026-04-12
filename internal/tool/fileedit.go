@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"glaude/internal/memory"
 )
 
 // FileEditTool performs precise string replacement in files.
 // It uses str_replace semantics: old_string must match exactly once
 // (unless replace_all is set), then is replaced with new_string.
-type FileEditTool struct{}
+type FileEditTool struct {
+	Checkpoint *memory.Checkpoint
+}
 
 type fileEditInput struct {
 	FilePath   string `json:"file_path"`
@@ -80,6 +84,14 @@ func (f *FileEditTool) Execute(ctx context.Context, input json.RawMessage) (stri
 		newContent = strings.ReplaceAll(content, in.OldString, in.NewString)
 	} else {
 		newContent = strings.Replace(content, in.OldString, in.NewString, 1)
+	}
+
+	// Checkpoint: save file state before mutation
+	if f.Checkpoint != nil {
+		txID := f.Checkpoint.NextTxID()
+		if err := f.Checkpoint.Save(txID, in.FilePath); err != nil {
+			return "", fmt.Errorf("checkpoint: %w", err)
+		}
 	}
 
 	// Preserve original file permissions
