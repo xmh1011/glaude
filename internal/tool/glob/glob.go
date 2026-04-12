@@ -1,4 +1,4 @@
-package globtool
+package glob
 
 import (
 	"context"
@@ -15,10 +15,10 @@ import (
 
 const MaxResults = 100
 
-// GlobTool finds files matching a glob pattern.
+// Tool finds files matching a glob pattern.
 // Results are sorted by modification time (most recent first) and
 // capped at MaxResults entries. Always excludes .git, node_modules, etc.
-type GlobTool struct{}
+type Tool struct{}
 
 // Input is the parsed input for the Glob tool.
 type Input struct {
@@ -26,13 +26,13 @@ type Input struct {
 	Path    string `json:"path"`
 }
 
-func (g *GlobTool) Name() string { return "Glob" }
+func (g *Tool) Name() string { return "Glob" }
 
-func (g *GlobTool) Description() string {
+func (g *Tool) Description() string {
 	return "Fast file pattern matching tool. Supports glob patterns like \"**/*.go\" or \"src/**/*.ts\". Returns matching file paths sorted by modification time (most recent first)."
 }
 
-func (g *GlobTool) InputSchema() json.RawMessage {
+func (g *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -43,9 +43,9 @@ func (g *GlobTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (g *GlobTool) IsReadOnly() bool { return true }
+func (g *Tool) IsReadOnly() bool { return true }
 
-func (g *GlobTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (g *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

@@ -10,6 +10,12 @@
     * **遥测数据流 (Telemetry Flow)**：设计"双轨"日志隔离。前台仅保留极简的 UI 状态流转；后台设计基于 JSONL 的结构化日志管道，记录完整的 HTTP 载荷、工具调用耗时与内部状态机跃迁，配合轮转机制防止磁盘雪崩。
     * **级联取消树 (Cancellation Tree)**：在主入口点定义全局 Context，制定明确的规则：任何阻塞型操作（网络 IO、外部子进程计算）必须监听取消信号并实施资源回收。
 * **📖 参考文档**：[`reference/00-overview.md`](./reference/00-overview.md), [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md), [`reference/16-infrastructure-config.md`](./reference/16-infrastructure-config.md), [`reference/17-telemetry-privacy-operations.md`](./reference/17-telemetry-privacy-operations.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/entrypoints/cli.tsx` — 入口点、快速路径级联
+    * `src/setup.ts` — 环境初始化
+    * `src/bootstrap/state.ts` — 全局状态单例
+    * `src/utils/config.ts` — 分层配置
+    * `src/utils/log.ts` — 日志系统
 
 ### Phase 1 — 生命周期与查询引擎
 
@@ -19,6 +25,13 @@
     * **Agent 状态机模型**：定义核心的单向循环逻辑：`观察上下文 -> 构建请求 -> 引擎推理 -> 解析意图 (StopReason) -> 触发工具/结束回应`。
     * **测试替身机制 (Mock Harness)**：设计一个无副作用的 Mock 引擎，允许通过读取本地静态 JSON 剧本来驱动 Agent 状态机，用于高速验证业务逻辑。
 * **📖 参考文档**：[`reference/01-query-engine.md`](./reference/01-query-engine.md), [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md), [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/Tool.ts` — Tool 基类/接口定义
+    * `src/query.ts` — 查询引擎核心循环
+    * `src/QueryEngine.ts` — 查询引擎实现
+    * `src/cost-tracker.ts` — 成本追踪与 Token 统计
+    * `src/services/api/claude.ts` — Anthropic API 客户端
+    * `src/services/api/withRetry.ts` — 重试策略
 
 ### Phase 2 — 核心工具与持久化沙箱
 
@@ -28,6 +41,15 @@
     * **持久化 Shell 架构**：抛弃单次 `exec` 模型。设计一个基于管道 (Pipe) 的守护子进程模型，通过注入唯一的 UUID Sentinel（哨兵标记）来实现命令输出的精确截断，确保 `cd`、`export` 等上下文状态在多次请求间得以保留。
     * **进程组隔离**：确立子进程的进程组（PGID）管理机制，确保在超时或强制退出时，能以进程树为单位进行物理级抹杀。
 * **📖 参考文档**：[`reference/02-tool-system.md`](./reference/02-tool-system.md), [`reference/06-bash-engine.md`](./reference/06-bash-engine.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/Tool.ts` — Tool 接口定义（Name/Schema/Prompt/Execute）
+    * `src/tools.ts` — Registry 注册表、装配流水线
+    * `src/tools/BashTool/BashTool.tsx` — Bash 工具主逻辑
+    * `src/tools/BashTool/bashSecurity.ts` — Bash 安全检查
+    * `src/tools/BashTool/prompt.ts` — Bash 工具提示词
+    * `src/tools/FileReadTool/FileReadTool.ts` — 文件读取
+    * `src/tools/FileEditTool/FileEditTool.ts` — 文件编辑（str_replace）
+    * `src/services/tools/toolExecution.ts` — 工具执行管线
 
 ### Phase 3 — 工具集扩展与提示词工程
 
@@ -36,6 +58,14 @@
     * **搜索边界设计**：为 Glob 和 Grep 工具设计硬性保护边界（如强制忽略 `.git`, `node_modules`，限制最大返回行数），防止大仓库检索导致内存溢出 (OOM) 或 Token 爆仓。
     * **Prompt 组装管道**：设计一条动态的 System Prompt 生成流水线。策略为：`身份定义 -> 动态环境信息 (OS/Path) -> 活跃工具 Schema 列表 -> 工具避坑指南 (Best Practices)`。
 * **📖 参考文档**：[`reference/02-tool-system.md`](./reference/02-tool-system.md), [`reference/10-context-assembly.md`](./reference/10-context-assembly.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/tools/GlobTool/GlobTool.ts` — Glob 文件搜索
+    * `src/tools/GrepTool/GrepTool.ts` — Grep 内容搜索
+    * `src/tools/FileWriteTool/` — 文件写入
+    * `src/utils/glob.ts` — glob 底层实现
+    * `src/utils/ripgrep.ts` — ripgrep 封装
+    * `src/utils/systemPrompt.ts` — System Prompt 动态组装
+    * `src/context.ts` — 上下文构建
 
 ### Phase 4 — 记忆系统与快照回滚
 
@@ -45,6 +75,12 @@
     * **记忆存储抽象 (MemoryStore)**：将记忆的"读写策略"与"存储介质"解耦。初期设计基于本地 Markdown 的存储实现，为后期扩展向量数据库预留接口。
     * **级联指令合并**：设计指令文件的向上回溯加载算法，确保全局规范与项目局部规范的正确优先级合并。
 * **📖 参考文档**：[`reference/09-session-persistence.md`](./reference/09-session-persistence.md), [`reference/16-infrastructure-config.md`](./reference/16-infrastructure-config.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/utils/claudemd.ts` — CLAUDE.md 文件解析与层级合并
+    * `src/utils/memory/` — 记忆系统目录
+    * `src/utils/sessionState.ts` — 会话状态管理
+    * `src/utils/sessionStorage.ts` — 会话序列化存储
+    * `src/utils/settings/` — 分层配置合并
 
 ### Phase 5 — 终端 UI 架构层
 
@@ -53,6 +89,13 @@
     * **MVU 单向数据流**：彻底分离 UI 状态 (Model)、事件处理 (Update) 与渲染层 (View)。所有的异步操作（网络请求、底层命令执行）均通过全局事件总线（消息/命令）抛给主 Update 函数处理，避免并发读写冲突。
     * **富文本与 Diff 渲染机制**：设计统一的文本着色器，对文件变更执行 Diff 算法计算增删块，映射为终端的安全色盘输出。
 * **📖 参考文档**：[`reference/14-ui-state.md`](./reference/14-ui-state.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/main.tsx` — 主 REPL 循环与 UI 编排
+    * `src/components/` — Ink UI 组件（选读关键组件）
+    * `src/screens/` — 全屏视图
+    * `src/state/` — 应用状态管理
+    * `src/commands.ts` — 斜杠命令注册
+    * `src/utils/terminal.ts` — 终端管理
 
 ### Phase 6 — 上下文预算与压缩调度
 
@@ -63,6 +106,12 @@
         * 第一级 (Micro)：设计本地正则清洗引擎，抹除过期文件读取内容和超长堆栈。
         * 第二级 (Auto)：设计旁路的 LLM 摘要任务，将冗长的交互历史折叠为"当前状态与目标"的结构化短语。
 * **📖 参考文档**：[`reference/10-context-assembly.md`](./reference/10-context-assembly.md), [`reference/11-compact-system.md`](./reference/11-compact-system.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/utils/tokens.ts` — Token 计数
+    * `src/utils/tokenBudget.ts` — Token 预算管理
+    * `src/utils/messages.ts` — 消息处理与压缩
+    * `src/context.ts` — 上下文装配（compact 触发逻辑）
+    * `src/utils/contentArray.ts` — 内容数组操作
 
 ### Phase 7 — 安全边界与权限矩阵
 
@@ -71,6 +120,14 @@
     * **权限降级漏斗**：设计工具调用的三道安全门：`静态白名单匹配 -> 危险特征正则扫描 (管道/重定向漏洞) -> UI 阻断拦截`。
     * **模式状态机**：设计 4 层安全配置模型（Default / Auto-edit / Plan-only / Auto full）。在 `Plan-only` 模式下，直接从工具注册表中卸载（Unregister）所有具备写权限的工具。
 * **📖 参考文档**：[`reference/07-permission-pipeline.md`](./reference/07-permission-pipeline.md), [`reference/06-bash-engine.md`](./reference/06-bash-engine.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/utils/permissions/` — 权限系统目录
+    * `src/tools/BashTool/bashSecurity.ts` — Bash 安全检查
+    * `src/tools/BashTool/bashPermissions.ts` — Bash 权限判定
+    * `src/tools/BashTool/commandSemantics.ts` — 命令语义分析
+    * `src/tools/BashTool/destructiveCommandWarning.ts` — 危险命令警告
+    * `src/utils/sandbox/` — 沙箱执行目录
+    * `src/utils/classifierApprovals.ts` — 自动审批分类器
 
 ### Phase 8 — 多智能体分层与 MCP 桥接
 
@@ -79,6 +136,14 @@
     * **子 Agent 隔离沙箱**：设计一种 `AgentTool`。当主循环触发此工具时，实例化一个具有全新 Token 预算、全新消息队列但继承当前环境变量的子实例。确立通信契约：子实体仅返回单一的结论字符串，抛弃中间推理过程。
     * **MCP 桥接协议 (Bridge)**：设计外部进程生命周期管理器 (Stdio) 和网络长连接保持器 (SSE)。将 MCP 的 `tools/list` 协议动态映射为本地的 Registry 结构，实现外部工具的透明化调用。
 * **📖 参考文档**：[`reference/03-coordinator.md`](./reference/03-coordinator.md), [`reference/08-agent-swarms.md`](./reference/08-agent-swarms.md), [`reference/04-plugin-system.md`](./reference/04-plugin-system.md), [`reference/13-bridge-system.md`](./reference/13-bridge-system.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/tools/AgentTool/AgentTool.tsx` — 子 Agent 工具
+    * `src/tools/AgentTool/runAgent.ts` — Agent 运行逻辑
+    * `src/tools/AgentTool/prompt.ts` — Agent 提示词
+    * `src/utils/mcp/` — MCP 客户端目录
+    * `src/tools/MCPTool/` — MCP 工具
+    * `src/coordinator/` — 多智能体协调器
+    * `src/utils/swarm/` — Swarm 系统目录
 
 ### Phase 9 — 会话路由与模型适配层
 
@@ -87,6 +152,13 @@
     * **会话序列化协议**：定义包含 `SessionID`, `ParentID`, `Message Tree`, `CWD` 的标准化 JSON 存储格式，支持 DAG（有向无环图）式的会话分支 (Fork) 与回溯 (Resume)。
     * **模型方言修复器 (Dialect Fixer)**：针对开源模型（如 Ollama），在适配器层设计 JSON 语法修正和结构容错逻辑，将残缺的 `tool_calls` 强行拉平为标准 `ContentBlock`。
 * **📖 参考文档**：[`reference/09-session-persistence.md`](./reference/09-session-persistence.md), [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/services/api/claude.ts` — Anthropic API 实现
+    * `src/utils/model/` — 模型选择与配置
+    * `src/utils/sessionStorage.ts` — 会话序列化
+    * `src/utils/sessionRestore.ts` — 会话恢复（--continue）
+    * `src/utils/conversationRecovery.ts` — 对话恢复
+    * `src/query.ts` — 查询引擎（fork 逻辑）
 
 ### Phase 10 — 流式状态机与 UI 联动
 
@@ -94,6 +166,12 @@
 * **设计细节**：
     * **流式事件分拣器**：设计底层的流式解析状态机。收到 `text_delta` 时，直接将数据块投递至 UI 渲染管线；收到 `tool_use_delta` 时，将数据截留至内存缓冲区，阻塞挂起，直至收到 `stop` 标志再进行完整性校验并投递给工具执行引擎。
 * **📖 参考文档**：[`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md), [`reference/14-ui-state.md`](./reference/14-ui-state.md), [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/utils/stream.ts` — 流式解析引擎
+    * `src/services/api/claude.ts` — SSE 流处理部分
+    * `src/main.tsx` — REPL 流式渲染编排
+    * `src/utils/messages.ts` — 流式消息拼接
+    * `src/ink/` — Ink 渲染层
 
 ### Phase 11 — 自动化钩子与交付
 
@@ -101,6 +179,11 @@
 * **设计细节**：
     * **Lifecycle Hooks 设计**：在状态机的特定阶段（如 `PreEdit`, `PostEdit`, `PostCommand`）设计事件发布/订阅机制。允许用户通过配置触发外部脚本（如自动执行代码格式化或静态扫描）。
 * **📖 参考文档**：[`reference/05-hook-system.md`](./reference/05-hook-system.md), [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/hooks/` — Hook 系统目录
+    * `src/plugins/` — 插件系统
+    * `src/utils/shell/` — Shell 抽象层
+    * `src/entrypoints/cli.tsx` — CLI 入口（init 命令）
 
 ---
 

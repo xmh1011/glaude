@@ -18,7 +18,7 @@ const maxIncludeDepth = 5
 // FileStore implements Store using local Markdown files.
 //
 // Directive files are loaded from multiple tiers (lowest to highest priority),
-// modeled after Claude Code's claudemd.ts:
+// modeled after Claude Code's claudemd.ts (adapted for GLAUDE.md):
 //
 //  1. /etc/glaude/GLAUDE.md + /etc/glaude/.glaude/rules/*.md  — managed (enterprise)
 //  2. ~/.glaude/GLAUDE.md + ~/.glaude/rules/*.md               — user global

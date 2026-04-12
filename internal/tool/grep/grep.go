@@ -1,4 +1,4 @@
-package greptool
+package grep
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 
 const MaxResults = 250
 
-// GrepTool searches file contents using ripgrep (rg) or grep.
+// Tool searches file contents using ripgrep (rg) or grep.
 // Results are capped at MaxResults matches. Always excludes .git, node_modules, etc.
-type GrepTool struct{}
+type Tool struct{}
 
 // Input is the parsed input for the Grep tool.
 type Input struct {
@@ -27,13 +27,13 @@ type Input struct {
 	CaseInsens bool   `json:"-i"`
 }
 
-func (g *GrepTool) Name() string { return "Grep" }
+func (g *Tool) Name() string { return "Grep" }
 
-func (g *GrepTool) Description() string {
+func (g *Tool) Description() string {
 	return "Search tool built on ripgrep. Supports regex patterns, file type filtering via glob parameter, and multiple output modes (content, files_with_matches, count)."
 }
 
-func (g *GrepTool) InputSchema() json.RawMessage {
+func (g *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -48,9 +48,9 @@ func (g *GrepTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (g *GrepTool) IsReadOnly() bool { return true }
+func (g *Tool) IsReadOnly() bool { return true }
 
-func (g *GrepTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (g *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	var in Input
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
@@ -75,7 +75,7 @@ func (g *GrepTool) Execute(ctx context.Context, input json.RawMessage) (string, 
 	return g.execRg(ctx, rgPath, in, searchPath)
 }
 
-func (g *GrepTool) execRg(ctx context.Context, rgPath string, in Input, searchPath string) (string, error) {
+func (g *Tool) execRg(ctx context.Context, rgPath string, in Input, searchPath string) (string, error) {
 	args := []string{
 		"--no-heading",
 		"--line-number",
@@ -141,7 +141,7 @@ func (g *GrepTool) execRg(ctx context.Context, rgPath string, in Input, searchPa
 	return result, nil
 }
 
-func (g *GrepTool) execGrep(ctx context.Context, in Input, searchPath string) (string, error) {
+func (g *Tool) execGrep(ctx context.Context, in Input, searchPath string) (string, error) {
 	args := []string{
 		"-r", "-n",
 		"--color=never",

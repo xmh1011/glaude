@@ -1,4 +1,4 @@
-package filereadtool
+package fileread
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"github.com/xmh1011/glaude/internal/tool"
 )
 
-// FileReadTool reads file contents with optional offset and line limit.
+// Tool reads file contents with optional offset and line limit.
 // When a FileStateCache is provided, it records each read for staleness tracking.
-type FileReadTool struct {
+type Tool struct {
 	FileState *tool.FileStateCache
 }
 
@@ -23,13 +23,13 @@ type Input struct {
 	Limit    int    `json:"limit"`
 }
 
-func (f *FileReadTool) Name() string { return "Read" }
+func (f *Tool) Name() string { return "Read" }
 
-func (f *FileReadTool) Description() string {
+func (f *Tool) Description() string {
 	return "Reads a file from the local filesystem. Returns the file contents with line numbers."
 }
 
-func (f *FileReadTool) InputSchema() json.RawMessage {
+func (f *Tool) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -41,9 +41,9 @@ func (f *FileReadTool) InputSchema() json.RawMessage {
 	}`)
 }
 
-func (f *FileReadTool) IsReadOnly() bool { return true }
+func (f *Tool) IsReadOnly() bool { return true }
 
-func (f *FileReadTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+func (f *Tool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
