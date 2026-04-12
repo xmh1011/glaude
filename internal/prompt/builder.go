@@ -1,0 +1,100 @@
+// Package prompt assembles the system prompt for LLM requests.
+//
+// The system prompt is composed of ordered segments:
+// 1. Identity - who the agent is
+// 2. Rules - behavioral constraints and tool usage guidelines
+// 3. Environment - OS, shell, CWD, git status, model info
+// 4. Custom instructions - user-provided CLAUDE.md / GLAUDE.md content
+//
+// Tool definitions are sent separately via the tools API parameter, not
+// embedded in the system prompt text.
+package prompt
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+)
+
+// Builder assembles the system prompt from ordered segments.
+type Builder struct {
+	identity    string
+	rules       string
+	custom      string
+	environment string
+}
+
+// NewBuilder creates a Builder with the default identity and rules.
+func NewBuilder() *Builder {
+	return &Builder{
+		identity: defaultIdentity,
+		rules:    defaultRules,
+	}
+}
+
+// WithCustomInstructions appends user-provided instructions (e.g. from CLAUDE.md).
+func (b *Builder) WithCustomInstructions(instructions string) *Builder {
+	b.custom = instructions
+	return b
+}
+
+// Build assembles the full system prompt string.
+// Environment context is computed once at build time.
+func (b *Builder) Build() string {
+	b.environment = buildEnvironment()
+
+	var parts []string
+	parts = append(parts, b.identity)
+	parts = append(parts, b.rules)
+	if b.custom != "" {
+		parts = append(parts, "# Custom Instructions\n\n"+b.custom)
+	}
+	parts = append(parts, b.environment)
+
+	return strings.Join(parts, "\n\n")
+}
+
+const defaultIdentity = `You are an AI coding agent. You help users with software engineering tasks including writing code, debugging, refactoring, and explaining code. You have access to tools that let you read files, edit files, search code, and execute shell commands.`
+
+const defaultRules = `# Rules
+
+- Read files before modifying them. Understand existing code before suggesting changes.
+- Use the appropriate tool for each task: Read for viewing files, Edit for modifying files, Write for creating files, Bash for running commands, Glob for finding files, Grep for searching content, LS for listing directories.
+- When editing files, the old_string must match exactly and uniquely in the file.
+- Prefer editing existing files over creating new ones.
+- Keep changes minimal and focused on the task at hand.
+- Do not add unnecessary comments, features, or refactoring beyond what was requested.
+- Use Bash for system commands, not for reading or editing files when dedicated tools exist.
+- When multiple tool calls are independent, describe them clearly so they can be understood in sequence.`
+
+func buildEnvironment() string {
+	var parts []string
+	parts = append(parts, "# Environment")
+	parts = append(parts, fmt.Sprintf("- Platform: %s/%s", runtime.GOOS, runtime.GOARCH))
+
+	if shell := os.Getenv("SHELL"); shell != "" {
+		parts = append(parts, fmt.Sprintf("- Shell: %s", shell))
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		parts = append(parts, fmt.Sprintf("- Working directory: %s", cwd))
+	}
+
+	// Git info (best-effort)
+	if branch, err := gitBranch(); err == nil {
+		parts = append(parts, fmt.Sprintf("- Git branch: %s", branch))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func gitBranch() (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}

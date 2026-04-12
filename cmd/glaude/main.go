@@ -17,6 +17,7 @@ import (
 	"glaude/internal/agent"
 	"glaude/internal/config"
 	"glaude/internal/llm"
+	promptpkg "glaude/internal/prompt"
 	"glaude/internal/telemetry"
 	"glaude/internal/tool"
 )
@@ -87,11 +88,9 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewAnthropicProvider("")
-				reg := tool.NewRegistry()
-				reg.Register(&tool.FileReadTool{})
-				reg.Register(&tool.FileEditTool{})
-				reg.Register(tool.NewBashTool())
-				a := agent.New(provider, "claude-sonnet-4-20250514", "You are a helpful assistant.", reg)
+				reg := buildRegistry()
+				systemPrompt := promptpkg.NewBuilder().Build()
+				a := agent.New(provider, "claude-sonnet-4-20250514", systemPrompt, reg)
 				text, err := a.Run(cmd.Context(), prompt)
 
 				usage := a.TotalUsage()
@@ -133,4 +132,17 @@ func buildVersionCmd() *cobra.Command {
 			fmt.Printf("glaude %s\n", version)
 		},
 	}
+}
+
+// buildRegistry creates a tool registry with all built-in tools.
+func buildRegistry() *tool.Registry {
+	reg := tool.NewRegistry()
+	reg.Register(&tool.FileReadTool{})
+	reg.Register(&tool.FileEditTool{})
+	reg.Register(&tool.FileWriteTool{})
+	reg.Register(tool.NewBashTool())
+	reg.Register(&tool.GlobTool{})
+	reg.Register(&tool.GrepTool{})
+	reg.Register(&tool.LSTool{})
+	return reg
 }
