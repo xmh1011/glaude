@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/telemetry"
 )
 
 const (

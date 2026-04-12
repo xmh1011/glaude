@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"glaude/internal/agent"
-	"glaude/internal/llm"
-	"glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/agent"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/memory"
 )
 
 func TestHandleSlashCommand_Help(t *testing.T) {

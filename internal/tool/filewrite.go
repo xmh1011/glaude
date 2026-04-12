@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/memory"
 )
 
 // FileWriteTool creates new files or completely overwrites existing ones.

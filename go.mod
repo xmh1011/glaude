@@ -1,4 +1,4 @@
-module glaude
+module github.com/xmh1011/glaude
 
 go 1.25.5
 

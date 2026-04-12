@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"glaude/internal/llm"
-	"glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 func TestRun_EndTurn(t *testing.T) {

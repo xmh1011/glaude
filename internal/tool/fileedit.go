@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"glaude/internal/memory"
+	"github.com/xmh1011/glaude/internal/memory"
 )
 
 // FileEditTool performs precise string replacement in files.

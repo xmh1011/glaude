@@ -13,7 +13,7 @@ import (
 
 	tiktoken "github.com/pkoukk/tiktoken-go"
 
-	"glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/llm"
 )
 
 // Default budget constants.

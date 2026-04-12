@@ -9,10 +9,10 @@ import (
 	"context"
 	"fmt"
 
-	"glaude/internal/compact"
-	"glaude/internal/llm"
-	"glaude/internal/telemetry"
-	"glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/compact"
+	"github.com/xmh1011/glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/tool"
 )
 
 // Agent drives the LLM loop for a single session.

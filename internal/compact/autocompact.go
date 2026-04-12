@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"glaude/internal/llm"
+	"github.com/xmh1011/glaude/internal/llm"
 )
 
 // AutoCompact configuration.

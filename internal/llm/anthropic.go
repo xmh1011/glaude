@@ -8,7 +8,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"glaude/internal/telemetry"
+	"github.com/xmh1011/glaude/internal/telemetry"
 )
 
 // AnthropicProvider implements Provider using the Anthropic Messages API.
