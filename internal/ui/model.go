@@ -79,12 +79,13 @@ type Model struct {
 	renderer *glamour.TermRenderer
 
 	// State
-	messages []displayMessage
-	waiting  bool  // true while agent is processing
-	err      error // last error
-	width    int   // terminal width
-	height   int   // terminal height
-	quitting bool
+	messages  []displayMessage
+	waiting   bool   // true while agent is processing
+	err       error  // last error
+	width     int    // terminal width
+	height    int    // terminal height
+	quitting  bool
+	sessionID string // session ID for resume hint on exit
 
 	// Streaming state
 	streaming  bool   // true while receiving stream events
@@ -225,6 +226,11 @@ func (m *Model) updateCompletions() {
 // skills in this registry.
 func (m *Model) SetSkillRegistry(reg *skill.Registry) {
 	m.skillRegistry = reg
+}
+
+// SetSessionID sets the session ID shown in the exit hint.
+func (m *Model) SetSessionID(id string) {
+	m.sessionID = id
 }
 
 // RestoreMessages populates the UI display messages from the agent's
@@ -521,6 +527,9 @@ func (m *Model) handlePermissionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 func (m *Model) View() string {
 	if m.quitting {
+		if m.sessionID != "" {
+			return fmt.Sprintf("Goodbye!\n\nTo resume this conversation:\n  glaude --resume %s\n\nOr continue the most recent conversation:\n  glaude --continue\n", m.sessionID)
+		}
 		return "Goodbye!\n"
 	}
 

@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/charmbracelet/huh"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -213,8 +215,20 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				}
 			}
 
-			// Handle --resume: resume specific session
+			// Handle --resume: interactive picker or specific session
 			if resumeSession != "" {
+				if resumeSession == "pick" {
+					// Sentinel value from the flag default — show interactive picker
+					picked, pickErr := pickSession(cwd)
+					if pickErr != nil {
+						return pickErr
+					}
+					if picked == "" {
+						fmt.Println("No session selected.")
+						return nil
+					}
+					resumeSession = picked
+				}
 				sessionID = resumeSession
 				path := session.SessionFilePath(cwd, resumeSession)
 				entries, loadErr := session.LoadEntries(path)
@@ -236,6 +250,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 
 			m := ui.NewModel(a, cp, cmd.Context())
 			m.SetSkillRegistry(skillReg)
+			m.SetSessionID(sessionID)
 
 			// Restore display messages from session history so the user
 			// can see the previous conversation when using --continue/--resume.
@@ -266,7 +281,8 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 	// Flags
 	rootCmd.Flags().StringVarP(&userPrompt, "prompt", "p", "", "Run a single prompt and exit")
 	rootCmd.Flags().BoolVarP(&continueFlag, "continue", "c", false, "Resume the most recent session")
-	rootCmd.Flags().StringVar(&resumeSession, "resume", "", "Resume a specific session by ID")
+	rootCmd.Flags().StringVar(&resumeSession, "resume", "", "Resume a session (interactive picker if no ID given)")
+	rootCmd.Flags().Lookup("resume").NoOptDefVal = "pick" // --resume without value triggers picker
 
 	// Subcommands
 	rootCmd.AddCommand(buildVersionCmd())
@@ -327,4 +343,71 @@ func buildSkillRegistry(cwd string) *skill.Registry {
 
 	telemetry.Log.WithField("count", len(skillReg.All())).Info("skills loaded")
 	return skillReg
+}
+
+// pickSession shows an interactive picker for recent sessions.
+// Returns the selected session ID, or "" if the user cancels.
+func pickSession(cwd string) (string, error) {
+	sessions, err := session.ListSessions(cwd)
+	if err != nil {
+		return "", fmt.Errorf("list sessions: %w", err)
+	}
+	if len(sessions) == 0 {
+		return "", fmt.Errorf("no saved sessions found")
+	}
+
+	// Limit to 20 most recent
+	if len(sessions) > 20 {
+		sessions = sessions[:20]
+	}
+
+	// Build options for the picker
+	options := make([]huh.Option[string], 0, len(sessions))
+	for _, s := range sessions {
+		label := formatSessionLabel(s)
+		options = append(options, huh.NewOption(label, s.ID))
+	}
+
+	var selected string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select a session to resume").
+				Options(options...).
+				Value(&selected),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return "", nil // user cancelled
+	}
+	return selected, nil
+}
+
+// formatSessionLabel creates a human-readable label for a session.
+func formatSessionLabel(s session.SessionInfo) string {
+	age := time.Since(s.Timestamp)
+	var ageStr string
+	switch {
+	case age < time.Minute:
+		ageStr = "just now"
+	case age < time.Hour:
+		ageStr = fmt.Sprintf("%dm ago", int(age.Minutes()))
+	case age < 24*time.Hour:
+		ageStr = fmt.Sprintf("%dh ago", int(age.Hours()))
+	default:
+		ageStr = s.Timestamp.Format("2006-01-02 15:04")
+	}
+
+	title := s.Title
+	if title == "" && s.LastPrompt != "" {
+		title = s.LastPrompt
+		if len(title) > 50 {
+			title = title[:47] + "..."
+		}
+	}
+	if title == "" {
+		title = s.ID[:8] + "..."
+	}
+
+	return fmt.Sprintf("[%s] %s", ageStr, title)
 }
