@@ -13,6 +13,7 @@ import (
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
+	"github.com/xmh1011/glaude/internal/skill"
 )
 
 func TestHandleSlashCommand_Help(t *testing.T) {
@@ -146,6 +147,66 @@ func TestHandleSlashCommand_Mode_NoGate(t *testing.T) {
 	require.NotEmpty(t, m.messages)
 	last := m.messages[len(m.messages)-1]
 	assert.Contains(t, last.text, "not configured")
+}
+
+func TestHandleSlashCommand_SkillFallback(t *testing.T) {
+	m := newTestModel(t)
+	reg := skill.NewRegistry()
+	reg.Register(&skill.Skill{
+		Name:          "greet",
+		Description:   "Greet someone",
+		UserInvocable: true,
+		Source:         "bundled",
+		GetPrompt: func(args string) (string, error) {
+			return "Say hello to " + args, nil
+		},
+	})
+	m.SetSkillRegistry(reg)
+
+	_, cmd := m.handleSlashCommand("/greet World")
+	// Should have added user message and started agent
+	require.NotEmpty(t, m.messages)
+	assert.Equal(t, llm.RoleUser, m.messages[0].role)
+	assert.Contains(t, m.messages[0].text, "/greet")
+	assert.True(t, m.waiting)
+	assert.NotNil(t, cmd)
+}
+
+func TestHandleSlashCommand_SkillNotUserInvocable(t *testing.T) {
+	m := newTestModel(t)
+	reg := skill.NewRegistry()
+	reg.Register(&skill.Skill{
+		Name:          "internal",
+		Description:   "Not for users",
+		UserInvocable: false,
+		Source:         "bundled",
+		GetPrompt:     func(args string) (string, error) { return "nope", nil },
+	})
+	m.SetSkillRegistry(reg)
+
+	m.handleSlashCommand("/internal")
+	require.NotEmpty(t, m.messages)
+	last := m.messages[len(m.messages)-1]
+	assert.Contains(t, last.text, "Unknown command")
+}
+
+func TestHandleSlashCommand_HelpShowsSkills(t *testing.T) {
+	m := newTestModel(t)
+	reg := skill.NewRegistry()
+	reg.Register(&skill.Skill{
+		Name:          "simplify",
+		Description:   "Review code",
+		UserInvocable: true,
+		Source:         "bundled",
+	})
+	m.SetSkillRegistry(reg)
+
+	m.handleSlashCommand("/help")
+	require.NotEmpty(t, m.messages)
+	last := m.messages[len(m.messages)-1]
+	assert.Contains(t, last.text, "Available Skills")
+	assert.Contains(t, last.text, "/simplify")
+	assert.Contains(t, last.text, "Review code")
 }
 
 // --- helpers ---
