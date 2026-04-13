@@ -50,25 +50,32 @@ func main() {
 
 func run() int {
 	// --- Cancellation Tree ---
-	// First signal: graceful shutdown (cancel context).
-	// Second signal: force exit.
+	// Signal handling for one-shot and subcommands.
+	// In REPL mode, bubbletea manages signals in raw mode, so we stop
+	// the external handler before starting the UI to avoid races.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		sig := <-sigCh
+		sig, ok := <-sigCh
+		if !ok {
+			return // channel closed, REPL mode took over
+		}
 		fmt.Fprintf(os.Stderr, "\nReceived %s, shutting down gracefully...\n", sig)
 		cancel()
 		// Second signal: force exit
-		sig = <-sigCh
+		sig, ok = <-sigCh
+		if !ok {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "\nReceived %s again, forcing exit.\n", sig)
 		os.Exit(1)
 	}()
 
 	// --- CLI Command Tree ---
-	rootCmd := buildRootCmd(ctx)
+	rootCmd := buildRootCmd(ctx, sigCh)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -77,7 +84,7 @@ func run() int {
 	return 0
 }
 
-func buildRootCmd(ctx context.Context) *cobra.Command {
+func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 	var (
 		userPrompt    string
 		continueFlag  bool
@@ -235,6 +242,12 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			permMode := permission.ParseMode(viper.GetString("permission_mode"))
 			telemetry.Log.WithField("permission_mode", permMode.String()).Info("permission mode configured")
 			ui.WirePermissionGate(a, p, permMode)
+
+			// Stop the external signal handler before entering REPL.
+			// Bubbletea manages SIGINT/SIGTERM in raw mode; having two
+			// handlers race can cause Ctrl+C to not reach the UI.
+			signal.Stop(sigCh)
+			close(sigCh)
 
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("UI: %w", err)

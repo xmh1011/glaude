@@ -13,7 +13,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -21,7 +20,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/term"
 
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/llm"
@@ -119,11 +117,16 @@ type completion struct {
 }
 
 // NewModel creates a new REPL model.
+// IMPORTANT: Avoid terminal-querying calls (glamour WithAutoStyle, term.GetSize,
+// textarea.Focus) before tea.Program.Run() — they can leave stale data in stdin
+// that corrupts bubbletea's input parser, causing intermittent input freezes.
 func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model {
 	// Text input area — clean prompt style (❯) without borders
+	// NOTE: Focus() is deferred to Init() to avoid producing a tea.Cmd before
+	// the program is running. Calling it here discards the returned Cmd and
+	// can leave the cursor blink state inconsistent.
 	ta := textarea.New()
 	ta.Placeholder = "Type your message..."
-	ta.Focus()
 	ta.CharLimit = 0 // unlimited
 	ta.SetHeight(1)
 	ta.ShowLineNumbers = false
@@ -142,20 +145,16 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	// Markdown renderer
+	// Markdown renderer — use dark style explicitly to avoid querying the
+	// terminal for background color before bubbletea enters raw mode.
+	// glamour.WithAutoStyle() sends an OSC 11 query that can leave stale
+	// response data in stdin, causing the ANSI input parser to hang.
 	r, _ := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(80),
 	)
 
 	childCtx, cancel := context.WithCancel(ctx)
-
-	// Get initial terminal width so first render has correct dimensions
-	initWidth := 80
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-		initWidth = w
-		ta.SetWidth(w)
-	}
 
 	return &Model{
 		agent:      a,
@@ -163,7 +162,7 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model
 		textarea:   ta,
 		spinner:    sp,
 		renderer:   r,
-		width:      initWidth,
+		width:      80, // default; updated by WindowSizeMsg from bubbletea
 		ctx:        childCtx,
 		cancel:     cancel,
 	}
@@ -231,7 +230,7 @@ func (m *Model) SetSkillRegistry(reg *skill.Registry) {
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
-		textarea.Blink,
+		m.textarea.Focus(),
 		m.spinner.Tick,
 	)
 }
@@ -351,7 +350,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.SetWidth(msg.Width)
 		if m.renderer != nil {
 			m.renderer, _ = glamour.NewTermRenderer(
-				glamour.WithAutoStyle(),
+				glamour.WithStandardStyle("dark"),
 				glamour.WithWordWrap(msg.Width-4),
 			)
 		}

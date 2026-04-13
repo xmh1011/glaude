@@ -39,6 +39,7 @@ func TestModel_View_WithMessages(t *testing.T) {
 	cp := memory.NewCheckpoint()
 	a := agent.New(&testMockProvider{}, "test-model", "test prompt", nil)
 	m := NewModel(a, cp, context.Background())
+	m.renderer = nil // disable glamour to avoid ANSI color codes in test output
 	m.messages = append(m.messages, displayMessage{
 		role: llm.RoleUser,
 		text: "hello world",
@@ -79,6 +80,7 @@ func TestModel_RenderMessage_Assistant(t *testing.T) {
 	cp := memory.NewCheckpoint()
 	a := agent.New(&testMockProvider{}, "test-model", "test prompt", nil)
 	m := NewModel(a, cp, context.Background())
+	m.renderer = nil // disable glamour to avoid ANSI color codes in test output
 	rendered := m.renderMessage(displayMessage{
 		role: llm.RoleAssistant,
 		text: "test response",
