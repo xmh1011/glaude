@@ -25,6 +25,7 @@ import (
 	"github.com/xmh1011/glaude/internal/llm"
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
+	"github.com/xmh1011/glaude/internal/skill"
 )
 
 // displayMessage is a rendered message for display in the UI.
@@ -100,6 +101,9 @@ type Model struct {
 	// Context for cancelling agent work
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Skill registry for slash command fallback
+	skillRegistry *skill.Registry
 }
 
 // NewModel creates a new REPL model.
@@ -149,6 +153,13 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model
 // Must be called after NewProgram creates the program.
 func (m *Model) SetProgram(p *tea.Program) {
 	m.program = p
+}
+
+// SetSkillRegistry sets the skill registry for slash command fallback.
+// When a slash command is not a built-in command, it falls back to looking up
+// skills in this registry.
+func (m *Model) SetSkillRegistry(reg *skill.Registry) {
+	m.skillRegistry = reg
 }
 
 // Init implements tea.Model.

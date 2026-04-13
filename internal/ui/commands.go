@@ -46,7 +46,31 @@ func (m *Model) handleSlashCommand(input string) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Unknown command
+	// Unknown command: check skill registry
+	if m.skillRegistry != nil {
+		if s := m.skillRegistry.Get(name); s != nil && s.UserInvocable {
+			prompt, err := s.GetPrompt(args)
+			if err != nil {
+				m.messages = append(m.messages, displayMessage{
+					role: llm.RoleAssistant,
+					text: fmt.Sprintf("Error expanding skill /%s: %v", name, err),
+				})
+				return m, nil
+			}
+			// Send expanded skill prompt as a user message to the agent
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleUser,
+				text: fmt.Sprintf("/%s %s", name, args),
+			})
+			m.waiting = true
+			m.streaming = true
+			m.streamText = ""
+			m.err = nil
+			return m, m.runAgent(prompt)
+		}
+	}
+
+	// Truly unknown command
 	m.messages = append(m.messages, displayMessage{
 		role: llm.RoleAssistant,
 		text: fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", name),
@@ -126,6 +150,22 @@ func cmdHelp(m *Model, _ string) (*Model, tea.Cmd) {
 	for _, cmd := range commands() {
 		b.WriteString(fmt.Sprintf("- `/%s` — %s\n", cmd.name, cmd.description))
 	}
+
+	// Show available skills
+	if m.skillRegistry != nil {
+		skills := m.skillRegistry.UserInvocable()
+		if len(skills) > 0 {
+			b.WriteString("\n**Available Skills**\n\n")
+			for _, s := range skills {
+				desc := s.Description
+				if desc == "" {
+					desc = "No description"
+				}
+				b.WriteString(fmt.Sprintf("- `/%s` — %s\n", s.Name, desc))
+			}
+		}
+	}
+
 	b.WriteString("\n**Keyboard Shortcuts**\n\n")
 	b.WriteString("- `Enter` — Send message\n")
 	b.WriteString("- `Alt+Enter` — Insert newline\n")

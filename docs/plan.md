@@ -173,12 +173,33 @@
     * `src/utils/messages.ts` — 流式消息拼接
     * `src/ink/` — Ink 渲染层
 
-### Phase 11 — 自动化钩子与交付
+### Phase 11 — Skill 系统与 Prompt-as-Code
 
-* **设计目标**：提供工程级的生命周期扩展点。
+* **设计目标**：实现 "Prompt as Code" 的可复用工作流系统，让用户和插件能以 Markdown 文件定义 Agent 行为扩展。
+* **设计细节**：
+    * **Skill 定义格式**：设计 Markdown + YAML Frontmatter 的 Skill 描述规范。Frontmatter 声明元信息（`name`、`description`、`allowedTools`、`whenToUse`、`executionContext`），正文是注入给 LLM 的提示词。这使得 Skill 具备版本控制、可分享、可组合的特性。
+    * **六层加载源**：设计分层的 Skill 发现机制——项目本地（`.glaude/skills/`）→ 用户全局（`~/.glaude/skills/`）→ 插件提供（plugin manifest）→ 企业管控（managed）→ 内置（bundled）→ MCP 运行时发现。多源 Skill 按命名空间合并，同名以高优先级覆盖。
+    * **SkillTool 实现**：注册一个 `SkillTool` 到 Registry，使 LLM 能自主发现并触发 Skill。该工具接收 Skill 名称作为输入，查找对应定义后按 `executionContext` 决定执行方式。
+    * **双执行模式**：`inline` 模式将 Skill 提示词直接注入当前对话上下文；`fork` 模式在隔离的子 Agent（复用 Phase 8 的 AgentTool 机制）中执行，防止上下文污染。
+    * **斜杠命令桥接**：每个已注册的 Skill 自动映射为斜杠命令（如 `/commit`、`/review-pr`），与 Phase 5 的 UI 命令系统集成。
+    * **Token 预算控制**：Skill 列表在 System Prompt 中占比约 1%。设计三级降级：完整描述 → 截断描述 → 仅保留名称，防止 Skill 膨胀挤占工作上下文。
+    * **安全边界**：Skill 文件加载时防范符号链接攻击和路径穿越，对 `allowedTools` 白名单实施严格校验。
+* **📖 参考文档**：[`reference/04-plugin-system.md`](./reference/04-plugin-system.md), [`reference/02-tool-system.md`](./reference/02-tool-system.md), [`reference/10-context-assembly.md`](./reference/10-context-assembly.md)
+* **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
+    * `src/skills/` — Skill 系统目录
+    * `src/commands.ts` — 斜杠命令注册（Skill → Command 转换）
+    * `src/tools/SkillTool/` — SkillTool 实现
+    * `src/utils/plugins/pluginLoader.ts` — 插件/Skill 加载器
+    * `src/utils/plugins/schemas.ts` — 插件/Skill 校验 Schema
+    * `src/Tool.ts` — Tool 接口（SkillTool 实现基础）
+
+### Phase 12 — 自动化钩子与交付
+
+* **设计目标**：提供工程级的生命周期扩展点，将 Skill + Hook + MCP 整合为完整的插件体系。
 * **设计细节**：
     * **Lifecycle Hooks 设计**：在状态机的特定阶段（如 `PreEdit`, `PostEdit`, `PostCommand`）设计事件发布/订阅机制。允许用户通过配置触发外部脚本（如自动执行代码格式化或静态扫描）。
-* **📖 参考文档**：[`reference/05-hook-system.md`](./reference/05-hook-system.md), [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)
+    * **Plugin 三位一体整合**：将 Skill（Phase 11）+ Hook + MCP（Phase 8）统一为 Plugin 概念。一个 Plugin 可同时提供 Skill 定义、Hook 拦截和 MCP 服务器，通过 plugin manifest（`plugin.json`）声明式配置。
+* **📖 参考文档**：[`reference/05-hook-system.md`](./reference/05-hook-system.md), [`reference/04-plugin-system.md`](./reference/04-plugin-system.md), [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)
 * **📂 必读源码**（路径相对于 `/Users/xiaominghao/code/claude-code`）：
     * `src/hooks/` — Hook 系统目录
     * `src/plugins/` — 插件系统
@@ -197,15 +218,15 @@
 | [`reference/01-query-engine.md`](./reference/01-query-engine.md)                                 | 查询引擎：核心循环与流式处理   | Phase 1         |
 | [`reference/02-tool-system.md`](./reference/02-tool-system.md)                                   | 工具系统：42 模块统一接口   | Phase 2/3       |
 | [`reference/03-coordinator.md`](./reference/03-coordinator.md)                                   | 多智能体协调器          | Phase 8         |
-| [`reference/04-plugin-system.md`](./reference/04-plugin-system.md)                               | 插件系统：全生命周期管理     | Phase 8         |
-| [`reference/05-hook-system.md`](./reference/05-hook-system.md)                                   | Hook 系统：20 种事件类型 | Phase 11        |
+| [`reference/04-plugin-system.md`](./reference/04-plugin-system.md)                               | 插件系统：全生命周期管理     | Phase 8/11/12   |
+| [`reference/05-hook-system.md`](./reference/05-hook-system.md)                                   | Hook 系统：20 种事件类型 | Phase 12        |
 | [`reference/06-bash-engine.md`](./reference/06-bash-engine.md)                                   | Bash 执行引擎：沙箱与管道  | Phase 2/7       |
 | [`reference/07-permission-pipeline.md`](./reference/07-permission-pipeline.md)                   | 权限流水线：纵深防御       | Phase 7         |
 | [`reference/08-agent-swarms.md`](./reference/08-agent-swarms.md)                                 | Agent 集群：团队协调    | Phase 8         |
 | [`reference/09-session-persistence.md`](./reference/09-session-persistence.md)                   | 会话持久化            | Phase 4/9       |
 | [`reference/10-context-assembly.md`](./reference/10-context-assembly.md)                         | 上下文装配            | Phase 3/6       |
 | [`reference/11-compact-system.md`](./reference/11-compact-system.md)                             | 压缩系统：多层架构        | Phase 6         |
-| [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)                       | 启动与引导            | Phase 0/1/10/11 |
+| [`reference/12-startup-bootstrap.md`](./reference/12-startup-bootstrap.md)                       | 启动与引导            | Phase 0/1/10/12 |
 | [`reference/13-bridge-system.md`](./reference/13-bridge-system.md)                               | 桥接系统：远程控制协议      | Phase 8         |
 | [`reference/14-ui-state.md`](./reference/14-ui-state.md)                                         | UI 与状态管理         | Phase 5/10      |
 | [`reference/15-services-api-layer.md`](./reference/15-services-api-layer.md)                     | 服务层与 API 架构      | Phase 1/9/10    |

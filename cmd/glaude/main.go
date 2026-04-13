@@ -25,6 +25,8 @@ import (
 	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/prompt"
 	"github.com/xmh1011/glaude/internal/session"
+	"github.com/xmh1011/glaude/internal/skill"
+	"github.com/xmh1011/glaude/internal/skill/bundled"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
 	"github.com/xmh1011/glaude/internal/tool/bash"
@@ -34,6 +36,7 @@ import (
 	"github.com/xmh1011/glaude/internal/tool/glob"
 	"github.com/xmh1011/glaude/internal/tool/grep"
 	"github.com/xmh1011/glaude/internal/tool/ls"
+	"github.com/xmh1011/glaude/internal/tool/skilltool"
 	"github.com/xmh1011/glaude/internal/tool/subagent"
 	"github.com/xmh1011/glaude/internal/ui"
 )
@@ -112,7 +115,8 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
 				provider := llm.NewProvider(providerName, model)
-				reg := buildRegistry(nil, provider, model)
+				skillReg := buildSkillRegistry(cwd)
+				reg := buildRegistry(nil, provider, model, skillReg)
 
 				// Load MCP servers from config
 				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -125,7 +129,10 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 					telemetry.Log.WithField("error", err.Error()).Warn("failed to load directives")
 				}
 
-				sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
+				sysPrompt := prompt.NewBuilder().
+					WithCustomInstructions(instructions).
+					WithSkills(skillReg.ForPrompt()).
+					Build()
 				a := agent.New(provider, model, sysPrompt, reg)
 
 				// Session persistence for one-shot mode
@@ -158,7 +165,8 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 
 			provider := llm.NewProvider(providerName, model)
 			cp := memory.NewCheckpoint()
-			reg := buildRegistry(cp, provider, model)
+			skillReg := buildSkillRegistry(cwd)
+			reg := buildRegistry(cp, provider, model, skillReg)
 
 			// Load MCP servers from config
 			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -170,7 +178,10 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 				telemetry.Log.WithField("error", err.Error()).Warn("failed to load directives")
 			}
 
-			sysPrompt := prompt.NewBuilder().WithCustomInstructions(instructions).Build()
+			sysPrompt := prompt.NewBuilder().
+				WithCustomInstructions(instructions).
+				WithSkills(skillReg.ForPrompt()).
+				Build()
 			a := agent.New(provider, model, sysPrompt, reg)
 
 			// Session persistence
@@ -217,6 +228,7 @@ func buildRootCmd(ctx context.Context) *cobra.Command {
 			a.SetSession(store)
 
 			m := ui.NewModel(a, cp, cmd.Context())
+			m.SetSkillRegistry(skillReg)
 			p := ui.NewProgram(m)
 
 			// Wire permission gate: reads mode from config, bridges Ask to UI prompt
@@ -256,7 +268,8 @@ func buildVersionCmd() *cobra.Command {
 // buildRegistry creates a tool registry with all built-in tools.
 // If cp is nil, a new Checkpoint is created internally.
 // provider and model are used for sub-agent spawning.
-func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *tool.Registry {
+// skillReg is used to register the Skill tool (may be nil).
+func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, skillReg *skill.Registry) *tool.Registry {
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
@@ -270,5 +283,28 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string) *
 	reg.Register(&grep.Tool{})
 	reg.Register(&ls.Tool{})
 	reg.Register(&subagent.Tool{Provider: provider, Model: model, Registry: reg})
+	if skillReg != nil && len(skillReg.All()) > 0 {
+		reg.Register(&skilltool.Tool{SkillRegistry: skillReg})
+	}
 	return reg
+}
+
+// buildSkillRegistry creates a skill registry with bundled and disk-based skills.
+func buildSkillRegistry(cwd string) *skill.Registry {
+	skillReg := skill.NewRegistry()
+
+	// Register bundled skills first (lowest priority)
+	bundled.RegisterAll(skillReg)
+
+	// Load disk-based skills (user + project, project overrides user)
+	diskSkills, err := skill.LoadAll(cwd)
+	if err != nil {
+		telemetry.Log.WithField("error", err.Error()).Warn("failed to load disk skills")
+	}
+	for _, s := range diskSkills {
+		skillReg.Register(s)
+	}
+
+	telemetry.Log.WithField("count", len(skillReg.All())).Info("skills loaded")
+	return skillReg
 }
