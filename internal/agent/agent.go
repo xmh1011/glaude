@@ -41,6 +41,7 @@ type Agent struct {
 	lastUUID       string         // UUID of the last recorded entry for parentUUID chaining
 	hookEngine     *hook.Engine   // nil = no hooks (tests, sub-agents)
 	sessionStarted bool           // SessionStart hook fires only once
+	fileState      *tool.FileStateCache // shared file state for diff extraction
 }
 
 // New creates an Agent bound to the given provider and model.
@@ -89,6 +90,11 @@ func (a *Agent) SetHookEngine(e *hook.Engine) {
 // HookEngine returns the current hook engine, or nil.
 func (a *Agent) HookEngine() *hook.Engine {
 	return a.hookEngine
+}
+
+// SetFileState sets the shared file state cache for diff extraction.
+func (a *Agent) SetFileState(fs *tool.FileStateCache) {
+	a.fileState = fs
 }
 
 // RestoreFrom loads a saved conversation into the agent's message history.
@@ -186,7 +192,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 			results := make([]llm.ContentBlock, 0, len(toolBlocks))
 			for _, tb := range toolBlocks {
-				result, isErr := a.executeTool(ctx, tb)
+				result, isErr := a.executeTool(ctx, tb, nil)
 				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
 			}
 			toolResultMsg := llm.Message{
@@ -308,7 +314,7 @@ func (a *Agent) RunStream(ctx context.Context, prompt string, cb StreamCallback)
 
 			results := make([]llm.ContentBlock, 0, len(toolBlocks))
 			for _, tb := range toolBlocks {
-				result, isErr := a.executeTool(ctx, tb)
+				result, isErr := a.executeTool(ctx, tb, cb)
 				results = append(results, llm.NewToolResultBlock(tb.ID, result, isErr))
 			}
 			toolResultMsg := llm.Message{
@@ -414,8 +420,9 @@ func (a *Agent) consumeStream(
 }
 
 // executeTool dispatches a tool_use block to the Registry and returns the
-// result text and whether it's an error.
-func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, bool) {
+// result text and whether it's an error. If cb is non-nil, a tool_result
+// event is sent to the UI after execution.
+func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock, cb StreamCallback) (string, bool) {
 	if a.registry == nil {
 		return fmt.Sprintf("Error: tool %q is not available (no registry)", tb.Name), true
 	}
@@ -430,7 +437,7 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 	hookSkipGate := false
 	if a.hookEngine != nil && a.hookEngine.HasHooks(hook.PreToolUse) {
 		cwd, _ := os.Getwd()
-		hr := a.hookEngine.Dispatch(ctx, hook.PreToolUse, &hook.HookInput{
+		hr := a.hookEngine.Dispatch(ctx, hook.PreToolUse, &hook.Input{
 			CWD:       cwd,
 			ToolName:  tb.Name,
 			ToolInput: tb.Input,
@@ -483,6 +490,18 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 		}
 	}
 
+	// Capture old content before file-mutating tools for diff.
+	var oldContent string
+	var filePath string
+	if a.fileState != nil && (tb.Name == "Edit" || tb.Name == "Write") {
+		filePath = extractFilePath(tb)
+		if filePath != "" {
+			if fs := a.fileState.Get(filePath); fs != nil {
+				oldContent = fs.Content
+			}
+		}
+	}
+
 	telemetry.Log.
 		WithField("tool", tb.Name).
 		WithField("tool_use_id", tb.ID).
@@ -509,7 +528,7 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 	// --- PostToolUse hook ---
 	if a.hookEngine != nil && a.hookEngine.HasHooks(hook.PostToolUse) {
 		cwd, _ := os.Getwd()
-		a.hookEngine.Dispatch(ctx, hook.PostToolUse, &hook.HookInput{
+		a.hookEngine.Dispatch(ctx, hook.PostToolUse, &hook.Input{
 			CWD:        cwd,
 			ToolName:   tb.Name,
 			ToolInput:  tb.Input,
@@ -517,6 +536,27 @@ func (a *Agent) executeTool(ctx context.Context, tb llm.ContentBlock) (string, b
 			IsError:    isErr,
 		})
 		// PostToolUse is informational — we don't act on the result.
+	}
+
+	// Send tool result event to UI for display.
+	if cb != nil {
+		event := llm.StreamEvent{
+			Type:    llm.EventToolResult,
+			Name:    tb.Name,
+			Result:  result,
+			IsError: isErr,
+		}
+		// Attach diff data for file-mutating tools.
+		if !isErr && filePath != "" && oldContent != "" {
+			if newData, readErr := os.ReadFile(filePath); readErr == nil {
+				event.DiffData = &llm.ToolDiffData{
+					FilePath:   filePath,
+					OldContent: oldContent,
+					NewContent: string(newData),
+				}
+			}
+		}
+		cb(event)
 	}
 
 	return result, isErr
@@ -534,6 +574,17 @@ func extractBashCommand(tb llm.ContentBlock) string {
 		return ""
 	}
 	return parsed.Command
+}
+
+// extractFilePath extracts the "file_path" field from a file tool's input JSON.
+func extractFilePath(tb llm.ContentBlock) string {
+	var parsed struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal(tb.Input, &parsed); err != nil {
+		return ""
+	}
+	return parsed.FilePath
 }
 
 // TotalUsage returns the cumulative token usage across all iterations.
@@ -634,7 +685,7 @@ func (a *Agent) fireSessionStart(ctx context.Context) {
 		return
 	}
 	cwd, _ := os.Getwd()
-	hr := a.hookEngine.Dispatch(ctx, hook.SessionStart, &hook.HookInput{CWD: cwd})
+	hr := a.hookEngine.Dispatch(ctx, hook.SessionStart, &hook.Input{CWD: cwd})
 	for _, msg := range hr.Messages {
 		telemetry.Log.WithField("hook", "SessionStart").Info(msg)
 	}
@@ -646,7 +697,7 @@ func (a *Agent) fireStop(ctx context.Context) {
 		return
 	}
 	cwd, _ := os.Getwd()
-	hr := a.hookEngine.Dispatch(ctx, hook.Stop, &hook.HookInput{CWD: cwd})
+	hr := a.hookEngine.Dispatch(ctx, hook.Stop, &hook.Input{CWD: cwd})
 	for _, msg := range hr.Messages {
 		telemetry.Log.WithField("hook", "Stop").Info(msg)
 	}

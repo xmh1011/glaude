@@ -19,7 +19,7 @@ type Engine struct {
 }
 
 // NewEngine creates an Engine that reads hook configuration from viper's
-// "hooks" key and snapshots it. sessionID is embedded in every HookInput.
+// "hooks" key and snapshots it. sessionID is embedded in every Input.
 func NewEngine(sessionID string) *Engine {
 	e := &Engine{sessionID: sessionID}
 	e.config = loadConfig()
@@ -43,14 +43,14 @@ func (e *Engine) SetConfig(cfg HookConfig) {
 
 // Dispatch finds all hooks matching the event and tool name, executes them,
 // and returns an aggregated result.
-func (e *Engine) Dispatch(ctx context.Context, event Event, input *HookInput) *HookResult {
+func (e *Engine) Dispatch(ctx context.Context, event Event, input *Input) *Result {
 	if e == nil {
-		return &HookResult{}
+		return &Result{}
 	}
 
 	groups, ok := e.config[event]
 	if !ok || len(groups) == 0 {
-		return &HookResult{}
+		return &Result{}
 	}
 
 	// Fill in common fields.
@@ -58,7 +58,7 @@ func (e *Engine) Dispatch(ctx context.Context, event Event, input *HookInput) *H
 	input.Event = event
 
 	// Collect matching hooks.
-	var entries []HookEntry
+	var entries []Entry
 	for _, g := range groups {
 		if matchTool(g.Matcher, input.ToolName) {
 			entries = append(entries, g.Hooks...)
@@ -66,11 +66,11 @@ func (e *Engine) Dispatch(ctx context.Context, event Event, input *HookInput) *H
 	}
 
 	if len(entries) == 0 {
-		return &HookResult{}
+		return &Result{}
 	}
 
 	// Execute each hook and aggregate results.
-	var outputs []*HookOutput
+	var outputs []*Output
 	var errors []error
 	var blocked bool
 
@@ -178,14 +178,14 @@ func matchTool(pattern, name string) bool {
 	return matched
 }
 
-// aggregate merges all hook outputs and errors into a single HookResult.
+// aggregate merges all hook outputs and errors into a single Result.
 // Aggregation rules:
 //   - deny > allow (strictest wins)
 //   - updatedInput: last one wins
 //   - messages: concatenated
 //   - any continue=false → StopSession=true
-func aggregate(outputs []*HookOutput, errors []error, blocked bool) *HookResult {
-	result := &HookResult{
+func aggregate(outputs []*Output, errors []error, blocked bool) *Result {
+	result := &Result{
 		Errors:  errors,
 		Blocked: blocked,
 	}

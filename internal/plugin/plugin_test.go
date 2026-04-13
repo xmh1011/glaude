@@ -100,7 +100,7 @@ func TestMergedHooks(t *testing.T) {
 					Name: "p1",
 					Hooks: hook.HookConfig{
 						hook.PreToolUse: {
-							{Matcher: "Bash", Hooks: []hook.HookEntry{{Type: "command", Command: "echo p1"}}},
+							{Matcher: "Bash", Hooks: []hook.Entry{{Type: "command", Command: "echo p1"}}},
 						},
 					},
 				},
@@ -110,10 +110,10 @@ func TestMergedHooks(t *testing.T) {
 					Name: "p2",
 					Hooks: hook.HookConfig{
 						hook.PreToolUse: {
-							{Matcher: "*", Hooks: []hook.HookEntry{{Type: "command", Command: "echo p2"}}},
+							{Matcher: "*", Hooks: []hook.Entry{{Type: "command", Command: "echo p2"}}},
 						},
 						hook.PostToolUse: {
-							{Matcher: "Edit", Hooks: []hook.HookEntry{{Type: "command", Command: "echo post"}}},
+							{Matcher: "Edit", Hooks: []hook.Entry{{Type: "command", Command: "echo post"}}},
 						},
 					},
 				},

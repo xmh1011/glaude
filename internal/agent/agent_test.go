@@ -288,7 +288,7 @@ func TestExecuteTool_HookDeny(t *testing.T) {
 		hook.PreToolUse: {
 			{
 				Matcher: "*",
-				Hooks: []hook.HookEntry{
+				Hooks: []hook.Entry{
 					{Type: "command", Command: `echo '{"decision":"deny","message":"not allowed"}'`},
 				},
 			},
@@ -346,7 +346,7 @@ func TestExecuteTool_HookAllow(t *testing.T) {
 		hook.PreToolUse: {
 			{
 				Matcher: "Read",
-				Hooks: []hook.HookEntry{
+				Hooks: []hook.Entry{
 					{Type: "command", Command: `echo '{"decision":"allow"}'`},
 				},
 			},
@@ -400,7 +400,7 @@ func TestExecuteTool_HookBlockingError(t *testing.T) {
 		hook.PreToolUse: {
 			{
 				Matcher: "*",
-				Hooks: []hook.HookEntry{
+				Hooks: []hook.Entry{
 					{Type: "command", Command: `echo "security violation" >&2; exit 2`},
 				},
 			},

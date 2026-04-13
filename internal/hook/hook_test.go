@@ -48,7 +48,7 @@ func TestMatchTool(t *testing.T) {
 
 func TestAggregate_DenyWins(t *testing.T) {
 	boolFalse := false
-	outputs := []*HookOutput{
+	outputs := []*Output{
 		{Decision: "allow", Message: "hook1 ok"},
 		{Decision: "deny", Message: "hook2 denied"},
 	}
@@ -57,7 +57,7 @@ func TestAggregate_DenyWins(t *testing.T) {
 	assert.Len(t, result.Messages, 2)
 
 	// With continue=false
-	outputs2 := []*HookOutput{
+	outputs2 := []*Output{
 		{Continue: &boolFalse},
 	}
 	result2 := aggregate(outputs2, nil, false)
@@ -65,7 +65,7 @@ func TestAggregate_DenyWins(t *testing.T) {
 }
 
 func TestAggregate_AllowWhenNoDeny(t *testing.T) {
-	outputs := []*HookOutput{
+	outputs := []*Output{
 		{Decision: "allow"},
 		{Decision: "allow"},
 	}
@@ -74,7 +74,7 @@ func TestAggregate_AllowWhenNoDeny(t *testing.T) {
 }
 
 func TestAggregate_UpdatedInputLastWins(t *testing.T) {
-	outputs := []*HookOutput{
+	outputs := []*Output{
 		{UpdatedInput: json.RawMessage(`{"a":1}`)},
 		{UpdatedInput: json.RawMessage(`{"b":2}`)},
 	}
@@ -96,8 +96,8 @@ func TestRunCommand_ExitCode0(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{Type: "command", Command: `echo '{"decision":"allow"}'`}
-	input := &HookInput{CWD: "/tmp"}
+	entry := Entry{Type: "command", Command: `echo '{"decision":"allow"}'`}
+	input := &Input{CWD: "/tmp"}
 	out, err := runCommand(context.Background(), entry, input)
 	require.NoError(t, err)
 	assert.Equal(t, "allow", out.Decision)
@@ -107,8 +107,8 @@ func TestRunCommand_ExitCode1(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{Type: "command", Command: `echo "warning" >&2; exit 1`}
-	input := &HookInput{CWD: "/tmp"}
+	entry := Entry{Type: "command", Command: `echo "warning" >&2; exit 1`}
+	input := &Input{CWD: "/tmp"}
 	_, err := runCommand(context.Background(), entry, input)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "warning")
@@ -121,8 +121,8 @@ func TestRunCommand_ExitCode2(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{Type: "command", Command: `echo "blocked" >&2; exit 2`}
-	input := &HookInput{CWD: "/tmp"}
+	entry := Entry{Type: "command", Command: `echo "blocked" >&2; exit 2`}
+	input := &Input{CWD: "/tmp"}
 	_, err := runCommand(context.Background(), entry, input)
 	require.Error(t, err)
 	be, ok := err.(*blockingError)
@@ -138,11 +138,11 @@ func TestRunCommand_JSONOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{
+	entry := Entry{
 		Type:    "command",
 		Command: `echo '{"decision":"deny","message":"not allowed"}'`,
 	}
-	input := &HookInput{CWD: "/tmp"}
+	input := &Input{CWD: "/tmp"}
 	out, err := runCommand(context.Background(), entry, input)
 	require.NoError(t, err)
 	assert.Equal(t, "deny", out.Decision)
@@ -153,8 +153,8 @@ func TestRunCommand_PlainText(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{Type: "command", Command: `echo "just a message"`}
-	input := &HookInput{CWD: "/tmp"}
+	entry := Entry{Type: "command", Command: `echo "just a message"`}
+	input := &Input{CWD: "/tmp"}
 	out, err := runCommand(context.Background(), entry, input)
 	require.NoError(t, err)
 	assert.Equal(t, "just a message", out.Message)
@@ -164,8 +164,8 @@ func TestRunCommand_EmptyOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{Type: "command", Command: `true`}
-	input := &HookInput{CWD: "/tmp"}
+	entry := Entry{Type: "command", Command: `true`}
+	input := &Input{CWD: "/tmp"}
 	out, err := runCommand(context.Background(), entry, input)
 	require.NoError(t, err)
 	assert.NotNil(t, out)
@@ -179,12 +179,12 @@ func TestRunCommand_Timeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on windows")
 	}
-	entry := HookEntry{
+	entry := Entry{
 		Type:    "command",
 		Command: `sleep 30`,
 		Timeout: 100, // 100ms
 	}
-	input := &HookInput{CWD: "/tmp"}
+	input := &Input{CWD: "/tmp"}
 	start := time.Now()
 	_, err := runCommand(context.Background(), entry, input)
 	elapsed := time.Since(start)
@@ -202,11 +202,11 @@ func TestRunCommand_StdinReceivesJSON(t *testing.T) {
 		t.Skip("sh not available on windows")
 	}
 	// The hook reads stdin and outputs the tool_name field.
-	entry := HookEntry{
+	entry := Entry{
 		Type:    "command",
 		Command: `python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tool_name'])"`,
 	}
-	input := &HookInput{CWD: "/tmp", ToolName: "Bash"}
+	input := &Input{CWD: "/tmp", ToolName: "Bash"}
 
 	// Try with python3, skip if not available.
 	if _, err := os.Stat("/usr/bin/python3"); err != nil {
@@ -226,7 +226,7 @@ func TestRunCommand_StdinReceivesJSON(t *testing.T) {
 
 func TestEngine_Dispatch_NoConfig(t *testing.T) {
 	e := &Engine{sessionID: "test-session", config: HookConfig{}}
-	result := e.Dispatch(context.Background(), PreToolUse, &HookInput{
+	result := e.Dispatch(context.Background(), PreToolUse, &Input{
 		CWD:      "/tmp",
 		ToolName: "Bash",
 	})
@@ -244,14 +244,14 @@ func TestEngine_Dispatch_MatchAndExecute(t *testing.T) {
 			PreToolUse: {
 				{
 					Matcher: "Bash",
-					Hooks: []HookEntry{
+					Hooks: []Entry{
 						{Type: "command", Command: `echo '{"decision":"allow","message":"ok"}'`},
 					},
 				},
 			},
 		},
 	}
-	result := e.Dispatch(context.Background(), PreToolUse, &HookInput{
+	result := e.Dispatch(context.Background(), PreToolUse, &Input{
 		CWD:      "/tmp",
 		ToolName: "Bash",
 	})
@@ -266,14 +266,14 @@ func TestEngine_Dispatch_NoMatch(t *testing.T) {
 			PreToolUse: {
 				{
 					Matcher: "Write",
-					Hooks: []HookEntry{
+					Hooks: []Entry{
 						{Type: "command", Command: `echo 'should not run'`},
 					},
 				},
 			},
 		},
 	}
-	result := e.Dispatch(context.Background(), PreToolUse, &HookInput{
+	result := e.Dispatch(context.Background(), PreToolUse, &Input{
 		CWD:      "/tmp",
 		ToolName: "Bash",
 	})
@@ -283,7 +283,7 @@ func TestEngine_Dispatch_NoMatch(t *testing.T) {
 func TestEngine_Nil_Safe(t *testing.T) {
 	var e *Engine
 	assert.False(t, e.HasHooks(PreToolUse))
-	result := e.Dispatch(context.Background(), PreToolUse, &HookInput{})
+	result := e.Dispatch(context.Background(), PreToolUse, &Input{})
 	assert.Equal(t, None, result.Decision)
 }
 
@@ -291,7 +291,7 @@ func TestEngine_HasHooks(t *testing.T) {
 	e := &Engine{
 		config: HookConfig{
 			PreToolUse: {
-				{Matcher: "*", Hooks: []HookEntry{{Type: "command", Command: "true"}}},
+				{Matcher: "*", Hooks: []Entry{{Type: "command", Command: "true"}}},
 			},
 		},
 	}

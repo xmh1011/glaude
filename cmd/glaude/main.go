@@ -159,7 +159,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				}
 				pluginMgr.LoadSkills(skillReg)
 
-				reg := buildRegistry(nil, provider, model, skillReg, state.New(), nil, mcp.NewManager())
+				reg, fileState := buildRegistry(nil, provider, model, skillReg, state.New(), nil, mcp.NewManager())
 
 				// Load MCP servers from config + plugins
 				mcpMgr, err := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -181,6 +181,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 					WithSkills(skillReg.ForPrompt()).
 					Build()
 				a := agent.New(provider, model, sysPrompt, reg)
+				a.SetFileState(fileState)
 
 				// Skip all permission checks if requested
 				if skipPerms {
@@ -237,7 +238,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			permChecker := permission.NewCheckerWithMode(permMode)
 			mcpMgr := mcp.NewManager()
 
-			reg := buildRegistry(cp, provider, model, skillReg, st, permChecker, mcpMgr)
+			reg, fileState := buildRegistry(cp, provider, model, skillReg, st, permChecker, mcpMgr)
 
 			// Load MCP servers from config + plugins into shared manager
 			mcp.ConnectAllFromConfig(cmd.Context(), mcpMgr, reg)
@@ -255,6 +256,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				WithSkills(skillReg.ForPrompt()).
 				Build()
 			a := agent.New(provider, model, sysPrompt, reg)
+			a.SetFileState(fileState)
 
 			// Session persistence
 			sessionID := uuid.New().String()
@@ -386,7 +388,7 @@ func buildVersionCmd() *cobra.Command {
 // st is the shared session state for task/todo/plan/worktree tools.
 // checker is the permission checker for plan mode tools.
 // mcpMgr is the MCP manager for resource tools (may be nil).
-func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, skillReg *skill.Registry, st *state.State, checker *permission.Checker, mcpMgr *mcp.Manager) *tool.Registry {
+func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, skillReg *skill.Registry, st *state.State, checker *permission.Checker, mcpMgr *mcp.Manager) (*tool.Registry, *tool.FileStateCache) {
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
@@ -453,7 +455,7 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, s
 		reg.Register(&skilltool.Tool{SkillRegistry: skillReg})
 	}
 
-	return reg
+	return reg, fileState
 }
 
 // buildSkillRegistry creates a skill registry with bundled and disk-based skills.

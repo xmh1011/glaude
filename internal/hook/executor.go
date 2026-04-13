@@ -29,7 +29,7 @@ func (e *blockingError) Error() string {
 //	0 = success (stdout parsed as JSON or plain-text message)
 //	1 = non-blocking error (stderr logged, execution continues)
 //	2 = blocking error (tool execution is prevented)
-func runCommand(ctx context.Context, entry HookEntry, input *HookInput) (*HookOutput, error) {
+func runCommand(ctx context.Context, entry Entry, input *Input) (*Output, error) {
 	timeout := defaultTimeout
 	if entry.Timeout > 0 {
 		timeout = time.Duration(entry.Timeout) * time.Millisecond
@@ -78,18 +78,18 @@ func runCommand(ctx context.Context, entry HookEntry, input *HookInput) (*HookOu
 	return parseOutput(stdout.Bytes()), nil
 }
 
-// parseOutput tries to parse stdout as JSON HookOutput. If that fails,
+// parseOutput tries to parse stdout as JSON Output. If that fails,
 // the raw text is used as an informational message.
-func parseOutput(data []byte) *HookOutput {
+func parseOutput(data []byte) *Output {
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 {
-		return &HookOutput{}
+		return &Output{}
 	}
 
-	var out HookOutput
+	var out Output
 	if err := json.Unmarshal(data, &out); err != nil {
 		// Not valid JSON: treat as plain-text message.
-		return &HookOutput{Message: string(data)}
+		return &Output{Message: string(data)}
 	}
 	return &out
 }

@@ -30,9 +30,12 @@ import (
 
 // displayMessage is a rendered message for display in the UI.
 type displayMessage struct {
-	role    llm.Role
-	text    string // raw text
-	toolUse string // tool name if this is a tool use summary
+	role       llm.Role
+	text       string // raw text
+	toolUse    string // tool name if this is a tool use summary
+	toolResult string // tool output text (collapsed by default)
+	diffText   string // pre-rendered diff (for file edits)
+	expanded   bool   // whether tool output is expanded (Ctrl+O toggle)
 }
 
 // agentDoneMsg signals that the agent has finished processing.
@@ -51,6 +54,14 @@ type streamTextMsg struct {
 type streamToolStartMsg struct {
 	toolName string
 	toolID   string
+}
+
+// streamToolResultMsg delivers tool execution results to the UI.
+type streamToolResultMsg struct {
+	toolName string
+	result   string
+	diffData *llm.ToolDiffData // non-nil for file edit/write
+	isError  bool
 }
 
 // streamDoneMsg signals the stream has completed for this turn.
@@ -373,6 +384,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancel()
 			return m, tea.Quit
 
+		case tea.KeyCtrlO:
+			// Toggle expand/collapse of tool outputs
+			if !m.waiting {
+				m.toggleExpanded()
+			}
+			return m, nil
+
 		case tea.KeyCtrlC:
 			if m.waiting {
 				// Cancel current agent work
@@ -484,6 +502,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			toolUse: msg.toolName,
 			text:    fmt.Sprintf("Using tool: **%s**", msg.toolName),
 		})
+		return m, nil
+
+	case streamToolResultMsg:
+		// Attach tool result to the most recent matching tool use message.
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].toolUse == msg.toolName && m.messages[i].toolResult == "" {
+				m.messages[i].toolResult = msg.result
+				m.messages[i].diffText = ""
+				if msg.diffData != nil {
+					m.messages[i].diffText = RenderUnifiedDiff(
+						msg.diffData.FilePath,
+						msg.diffData.OldContent,
+						msg.diffData.NewContent,
+					)
+				}
+				break
+			}
+		}
+		m.streaming = true // resume streaming state, waiting for next text
 		return m, nil
 
 	case streamDoneMsg:
@@ -727,6 +764,9 @@ func (m *Model) renderMessage(msg displayMessage) string {
 		return label + "\n" + userMsgStyle.Render(msg.text) + "\n"
 
 	case llm.RoleAssistant:
+		if msg.toolUse != "" {
+			return m.renderToolMessage(msg)
+		}
 		label := assistantLabelStyle.Render("Assistant")
 		rendered := msg.text
 		if m.renderer != nil {
@@ -739,6 +779,63 @@ func (m *Model) renderMessage(msg displayMessage) string {
 	default:
 		return msg.text + "\n"
 	}
+}
+
+// renderToolMessage renders a tool use message with optional diff and output.
+func (m *Model) renderToolMessage(msg displayMessage) string {
+	var b strings.Builder
+
+	label := toolLabelStyle.Render("  " + msg.toolUse)
+	b.WriteString(label + "\n")
+
+	// Always show diff for file edits
+	if msg.diffText != "" {
+		b.WriteString(msg.diffText)
+	}
+
+	if msg.expanded && msg.toolResult != "" {
+		// Ctrl+O expanded: show full tool output
+		b.WriteString(toolOutputStyle.Render(msg.toolResult))
+		b.WriteString("\n")
+	} else if msg.toolResult != "" && msg.diffText == "" {
+		// Non-file tools: show truncated summary
+		summary := truncateResult(msg.toolResult, 3)
+		b.WriteString(toolOutputStyle.Render(summary))
+		b.WriteString("\n")
+	}
+
+	return b.String() + "\n"
+}
+
+// toggleExpanded toggles the expanded state of all tool output messages.
+func (m *Model) toggleExpanded() {
+	expanded := 0
+	total := 0
+	for _, msg := range m.messages {
+		if msg.toolResult != "" {
+			total++
+			if msg.expanded {
+				expanded++
+			}
+		}
+	}
+	// If less than half are expanded, expand all; otherwise collapse all.
+	newState := expanded <= total/2
+	for i := range m.messages {
+		if m.messages[i].toolResult != "" {
+			m.messages[i].expanded = newState
+		}
+	}
+}
+
+// truncateResult truncates tool output to maxLines, adding a hint.
+func truncateResult(s string, maxLines int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return s
+	}
+	result := strings.Join(lines[:maxLines], "\n")
+	return result + fmt.Sprintf("\n... (%d more lines, Ctrl+O to expand)", len(lines)-maxLines)
 }
 
 // renderStatusBar renders a subtle single-line status hint below the input,
@@ -849,6 +946,13 @@ func (m *Model) runAgent(prompt string) tea.Cmd {
 					p.Send(streamTextMsg{text: event.Text})
 				case llm.EventToolUseStart:
 					p.Send(streamToolStartMsg{toolName: event.Name, toolID: event.ID})
+				case llm.EventToolResult:
+					p.Send(streamToolResultMsg{
+						toolName: event.Name,
+						result:   event.Result,
+						diffData: event.DiffData,
+						isError:  event.IsError,
+					})
 				}
 			}
 			text, err := a.RunStream(ctx, prompt, cb)

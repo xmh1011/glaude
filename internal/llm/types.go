@@ -138,18 +138,29 @@ const (
 	EventInputJSONDelta   StreamEventType = "input_json_delta"
 	EventContentBlockStop StreamEventType = "content_block_stop"
 	EventMessageDelta     StreamEventType = "message_delta"
+	EventToolResult       StreamEventType = "tool_result"
 	EventError            StreamEventType = "error"
 )
+
+// ToolDiffData carries file diff information for UI rendering.
+type ToolDiffData struct {
+	FilePath   string
+	OldContent string
+	NewContent string
+}
 
 // StreamEvent is a single event from a streaming completion.
 type StreamEvent struct {
 	Type       StreamEventType
-	Text       string     // for text_delta
-	ID         string     // for tool_use_start: tool call ID
-	Name       string     // for tool_use_start: tool name
-	InputJSON  string     // for input_json_delta: partial JSON fragment
-	StopReason StopReason // for message_delta
-	Usage      Usage      // for message_delta: final usage
-	Error      error      // for error events
-	Index      int        // content block index
+	Text       string        // for text_delta
+	ID         string        // for tool_use_start: tool call ID
+	Name       string        // for tool_use_start / tool_result: tool name
+	InputJSON  string        // for input_json_delta: partial JSON fragment
+	StopReason StopReason    // for message_delta
+	Usage      Usage         // for message_delta: final usage
+	Error      error         // for error events
+	Index      int           // content block index
+	Result     string        // for tool_result: execution output
+	DiffData   *ToolDiffData // for tool_result: file diff (may be nil)
+	IsError    bool          // for tool_result: whether execution errored
 }

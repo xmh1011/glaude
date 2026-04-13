@@ -8,7 +8,9 @@
 //	0 = success, 1 = non-blocking error, 2 = blocking error.
 package hook
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Event represents a lifecycle event type.
 type Event string
@@ -26,24 +28,24 @@ const (
 	Stop Event = "Stop"
 )
 
-// HookEntry is a single hook command configuration.
-type HookEntry struct {
+// Entry is a single hook command configuration.
+type Entry struct {
 	Type    string `json:"type"`              // v1 only supports "command"
 	Command string `json:"command"`           // shell command to execute
 	Timeout int    `json:"timeout,omitempty"` // milliseconds, default 10000
 }
 
-// HookGroup binds a matcher pattern to a list of hooks.
-type HookGroup struct {
-	Matcher string      `json:"matcher"` // tool name pattern: "Bash", "Write|Edit", "*"
-	Hooks   []HookEntry `json:"hooks"`
+// Group binds a matcher pattern to a list of hooks.
+type Group struct {
+	Matcher string  `json:"matcher"` // tool name pattern: "Bash", "Write|Edit", "*"
+	Hooks   []Entry `json:"hooks"`
 }
 
 // HookConfig is the top-level hooks configuration, keyed by Event.
-type HookConfig map[Event][]HookGroup
+type HookConfig map[Event][]Group
 
-// HookInput is the JSON payload passed to hook commands via stdin.
-type HookInput struct {
+// Input is the JSON payload passed to hook commands via stdin.
+type Input struct {
 	SessionID  string          `json:"session_id"`
 	Event      Event           `json:"event"`
 	CWD        string          `json:"cwd"`
@@ -53,12 +55,12 @@ type HookInput struct {
 	IsError    bool            `json:"is_error,omitempty"`    // PostToolUse only
 }
 
-// HookOutput is the JSON payload a hook command may write to stdout.
-type HookOutput struct {
-	Decision     string          `json:"decision,omitempty"`      // "allow" or "deny"
-	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`  // modified tool input
-	Continue     *bool           `json:"continue,omitempty"`      // false = stop the session
-	Message      string          `json:"message,omitempty"`       // informational message
+// Output is the JSON payload a hook command may write to stdout.
+type Output struct {
+	Decision     string          `json:"decision,omitempty"`     // "allow" or "deny"
+	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"` // modified tool input
+	Continue     *bool           `json:"continue,omitempty"`     // false = stop the session
+	Message      string          `json:"message,omitempty"`      // informational message
 }
 
 // Decision represents an aggregated permission decision from hooks.
@@ -87,8 +89,8 @@ func (d Decision) String() string {
 	}
 }
 
-// HookResult aggregates all matching hook execution results for a single event.
-type HookResult struct {
+// Result aggregates all matching hook execution results for a single event.
+type Result struct {
 	Decision     Decision        // aggregated permission decision
 	UpdatedInput json.RawMessage // last updatedInput from hooks (if any)
 	StopSession  bool            // true if any hook set continue=false

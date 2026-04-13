@@ -170,6 +170,7 @@ func cmdHelp(m *Model, _ string) (*Model, tea.Cmd) {
 	b.WriteString("\n**Keyboard Shortcuts**\n\n")
 	b.WriteString("- `Enter` — Send message\n")
 	b.WriteString("- `Alt+Enter` — Insert newline\n")
+	b.WriteString("- `Ctrl+O` — Toggle expand/collapse tool outputs\n")
 	b.WriteString("- `Ctrl+C` — Cancel current operation / Exit\n")
 	b.WriteString("- `Ctrl+D` — Exit\n")
 
