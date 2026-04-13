@@ -15,11 +15,18 @@ type PromptFunc func(ctx context.Context, toolName string, description string, s
 type Gate struct {
 	checker    *Checker
 	promptFunc PromptFunc
+	skipAll    bool // when true, all permission checks return Allow unconditionally
 }
 
 // NewGate creates a Gate with the given checker and optional prompt function.
 func NewGate(checker *Checker, prompt PromptFunc) *Gate {
 	return &Gate{checker: checker, promptFunc: prompt}
+}
+
+// SetSkipAll enables or disables unconditional permission bypass.
+// When enabled, Evaluate always returns Allow without checking mode or scanning.
+func (g *Gate) SetSkipAll(skip bool) {
+	g.skipAll = skip
 }
 
 // Evaluate runs the full permission pipeline for a tool invocation:
@@ -28,6 +35,10 @@ func NewGate(checker *Checker, prompt PromptFunc) *Gate {
 // 3. If Ask, invoke the prompt callback
 // Returns the final allow/deny decision and reason.
 func (g *Gate) Evaluate(ctx context.Context, toolName string, isReadOnly bool, bashCmd string) CheckResult {
+	if g.skipAll {
+		return CheckResult{Decision: Allow, Reason: "dangerously-skip-permissions", Tool: toolName}
+	}
+
 	// Step 1: Mode-based check
 	result := g.checker.Check(toolName, isReadOnly, bashCmd)
 

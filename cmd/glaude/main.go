@@ -92,6 +92,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 		userPrompt    string
 		continueFlag  bool
 		resumeSession string
+		skipPerms     bool
 	)
 
 	rootCmd := &cobra.Command{
@@ -153,6 +154,11 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 					WithSkills(skillReg.ForPrompt()).
 					Build()
 				a := agent.New(provider, model, sysPrompt, reg)
+
+				// Skip all permission checks if requested
+				if skipPerms {
+					a.Gate().SetSkipAll(true)
+				}
 
 				// Session persistence for one-shot mode
 				sessionID := uuid.New().String()
@@ -288,6 +294,11 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			telemetry.Log.WithField("permission_mode", permMode.String()).Info("permission mode configured")
 			ui.WirePermissionGate(a, p, permMode)
 
+			// Skip all permission checks if requested
+			if skipPerms {
+				a.Gate().SetSkipAll(true)
+			}
+
 			// Stop the external signal handler before entering REPL.
 			// Bubbletea manages SIGINT/SIGTERM in raw mode; having two
 			// handlers race can cause Ctrl+C to not reach the UI.
@@ -309,6 +320,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 	rootCmd.Flags().BoolVarP(&continueFlag, "continue", "c", false, "Resume the most recent session")
 	rootCmd.Flags().StringVar(&resumeSession, "resume", "", "Resume a session (interactive picker if no ID given)")
 	rootCmd.Flags().Lookup("resume").NoOptDefVal = "pick" // --resume without value triggers picker
+	rootCmd.Flags().BoolVar(&skipPerms, "dangerously-skip-permissions", false, "Skip all permission checks (use with caution)")
 
 	// Subcommands
 	rootCmd.AddCommand(buildVersionCmd())
