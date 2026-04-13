@@ -95,6 +95,32 @@ func (e *Engine) Dispatch(ctx context.Context, event Event, input *HookInput) *H
 	return aggregate(outputs, errors, blocked)
 }
 
+// NewEngineWithConfig creates an Engine with an explicit hook configuration
+// instead of reading from viper. Use this when hooks are merged from
+// multiple sources (e.g. config file + plugins).
+func NewEngineWithConfig(sessionID string, cfg HookConfig) *Engine {
+	return &Engine{sessionID: sessionID, config: cfg}
+}
+
+// LoadConfig reads hook configuration from viper's "hooks" key and returns it.
+// This is the exported version of loadConfig for external callers that need
+// to read the base config before merging with plugin-provided hooks.
+func LoadConfig() HookConfig {
+	return loadConfig()
+}
+
+// MergeConfigs merges multiple HookConfig maps into one.
+// For each event, hook groups from all configs are concatenated in order.
+func MergeConfigs(configs ...HookConfig) HookConfig {
+	merged := HookConfig{}
+	for _, cfg := range configs {
+		for event, groups := range cfg {
+			merged[event] = append(merged[event], groups...)
+		}
+	}
+	return merged
+}
+
 // loadConfig reads hook configuration from viper.
 func loadConfig() HookConfig {
 	raw := viper.Get("hooks")

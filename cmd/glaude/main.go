@@ -25,6 +25,7 @@ import (
 	"github.com/xmh1011/glaude/internal/mcp"
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
+	"github.com/xmh1011/glaude/internal/plugin"
 	"github.com/xmh1011/glaude/internal/prompt"
 	"github.com/xmh1011/glaude/internal/session"
 	"github.com/xmh1011/glaude/internal/skill"
@@ -125,10 +126,19 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 
 				provider := llm.NewProvider(providerName, model)
 				skillReg := buildSkillRegistry(cwd)
+
+				// Discover and load plugins
+				pluginMgr := plugin.NewManager(cwd)
+				for _, pe := range pluginMgr.Errors() {
+					telemetry.Log.WithField("plugin", pe.Name).WithField("error", pe.Err.Error()).Warn("plugin load error")
+				}
+				pluginMgr.LoadSkills(skillReg)
+
 				reg := buildRegistry(nil, provider, model, skillReg)
 
-				// Load MCP servers from config
+				// Load MCP servers from config + plugins
 				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+				mcp.ConnectAll(cmd.Context(), mcpMgr, pluginMgr.MCPConfigs(), reg)
 				defer mcpMgr.Close()
 
 				// Load directive files (GLAUDE.md) from all tiers
@@ -150,8 +160,10 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				defer store.Close()
 				a.SetSession(store)
 
-				// Hook engine for one-shot mode
-				hookEngine := hook.NewEngine(sessionID)
+				// Hook engine for one-shot mode (merges config + plugin hooks)
+				viperHooks := hook.LoadConfig()
+				mergedHooks := hook.MergeConfigs(viperHooks, pluginMgr.MergedHooks())
+				hookEngine := hook.NewEngineWithConfig(sessionID, mergedHooks)
 				a.SetHookEngine(hookEngine)
 
 				text, err := a.Run(cmd.Context(), userPrompt)
@@ -175,10 +187,19 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			provider := llm.NewProvider(providerName, model)
 			cp := memory.NewCheckpoint()
 			skillReg := buildSkillRegistry(cwd)
+
+			// Discover and load plugins
+			pluginMgr := plugin.NewManager(cwd)
+			for _, pe := range pluginMgr.Errors() {
+				telemetry.Log.WithField("plugin", pe.Name).WithField("error", pe.Err.Error()).Warn("plugin load error")
+			}
+			pluginMgr.LoadSkills(skillReg)
+
 			reg := buildRegistry(cp, provider, model, skillReg)
 
-			// Load MCP servers from config
+			// Load MCP servers from config + plugins
 			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+			mcp.ConnectAll(cmd.Context(), mcpMgr, pluginMgr.MCPConfigs(), reg)
 			defer mcpMgr.Close()
 
 			mem := &memory.FileStore{}
@@ -196,8 +217,10 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			// Session persistence
 			sessionID := uuid.New().String()
 
-			// Hook engine for REPL mode (initialized after sessionID is known)
-			hookEngine := hook.NewEngine(sessionID)
+			// Hook engine for REPL mode (merges config + plugin hooks)
+			viperHooks := hook.LoadConfig()
+			mergedHooks := hook.MergeConfigs(viperHooks, pluginMgr.MergedHooks())
+			hookEngine := hook.NewEngineWithConfig(sessionID, mergedHooks)
 			a.SetHookEngine(hookEngine)
 
 			// Handle --continue: resume most recent session

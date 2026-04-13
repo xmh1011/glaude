@@ -28,11 +28,19 @@ func LoadFromConfig(ctx context.Context, reg *tool.Registry) (*Manager, error) {
 		return NewManager(), nil
 	}
 
+	mgr := NewManager()
 	if len(configs) == 0 {
-		return NewManager(), nil
+		return mgr, nil
 	}
 
-	mgr := NewManager()
+	ConnectAll(ctx, mgr, configs, reg)
+	return mgr, nil
+}
+
+// ConnectAll connects MCP servers from an explicit config list and registers
+// their discovered tools into the given Registry. It is safe to call multiple
+// times on the same Manager (e.g. once for viper config, once for plugins).
+func ConnectAll(ctx context.Context, mgr *Manager, configs []ServerConfig, reg *tool.Registry) {
 	for _, cfg := range configs {
 		if cfg.Name == "" || cfg.Command == "" {
 			telemetry.Log.
@@ -57,6 +65,4 @@ func LoadFromConfig(ctx context.Context, reg *tool.Registry) (*Manager, error) {
 				Debug("mcp: registered tool")
 		}
 	}
-
-	return mgr, nil
 }
