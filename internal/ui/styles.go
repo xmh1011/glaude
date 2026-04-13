@@ -42,8 +42,13 @@ var (
 		PaddingLeft(2)
 
 	statusBarStyle = lipgloss.NewStyle().
-		Foreground(dimColor).
-		Background(lipgloss.Color("236"))
+		Foreground(dimColor)
+
+	statusBarWarnStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("208"))
+
+	statusBarCritStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
 
 	toolLabelStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("214")).
@@ -76,4 +81,15 @@ var (
 
 	dividerStyle = lipgloss.NewStyle().
 		Foreground(dimColor)
+
+	completionNameStyle = lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true)
+
+	completionDescStyle = lipgloss.NewStyle().
+		Foreground(dimColor)
+
+	completionSelectedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("15")).
+		Background(lipgloss.Color("62"))
 )

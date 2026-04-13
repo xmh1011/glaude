@@ -11,7 +11,7 @@ func TestBuilder_Build(t *testing.T) {
 	b := NewBuilder()
 	result := b.Build()
 
-	assert.Contains(t, result, "AI coding agent")
+	assert.Contains(t, result, "glaude")
 	assert.Contains(t, result, "# Rules")
 	assert.Contains(t, result, "# Environment")
 	assert.Contains(t, result, "Platform:")
@@ -30,7 +30,7 @@ func TestBuilder_SegmentOrder(t *testing.T) {
 	result := b.Build()
 
 	// Identity should come before Rules
-	idxIdentity := strings.Index(result, "AI coding agent")
+	idxIdentity := strings.Index(result, "You are GLAUDE")
 	idxRules := strings.Index(result, "# Rules")
 	idxCustom := strings.Index(result, "# Custom Instructions")
 	idxSkills := strings.Index(result, "# Available Skills")

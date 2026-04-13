@@ -1,12 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 
@@ -28,39 +27,97 @@ func buildInitCmd() *cobra.Command {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Step 1: Check if .glaude.json already exists.
 	const configFile = ".glaude.json"
+
+	// Check if .glaude.json already exists.
 	if _, err := os.Stat(configFile); err == nil {
-		fmt.Printf("%s already exists. Overwrite? [y/N] ", configFile)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
+		var overwrite bool
+		err := huh.NewConfirm().
+			Title(configFile + " already exists. Overwrite?").
+			Value(&overwrite).
+			Run()
+		if err != nil {
+			return err
+		}
+		if !overwrite {
 			fmt.Println("Aborted.")
 			return nil
 		}
 	}
 
-	// Step 2: Choose provider.
-	provider := promptChoice(reader, "Provider", []string{"anthropic", "openai", "ollama"}, "anthropic")
+	var provider, model, permMode string
+	var includeHooks bool
 
-	// Step 3: Choose model.
+	// Step 1: Choose provider.
+	providerForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Provider").
+				Options(
+					huh.NewOption("anthropic", "anthropic"),
+					huh.NewOption("openai", "openai"),
+					huh.NewOption("ollama", "ollama"),
+				).
+				Value(&provider),
+		),
+	)
+	if err := providerForm.Run(); err != nil {
+		return err
+	}
+
+	// Step 2: Choose model (default depends on provider).
 	defaultModel := "claude-sonnet-4-20250514"
 	if provider == "openai" {
 		defaultModel = "gpt-4o"
 	} else if provider == "ollama" {
 		defaultModel = "llama3"
 	}
-	model := promptInput(reader, "Model", defaultModel)
+	model = defaultModel
 
-	// Step 4: Choose permission mode.
-	permMode := promptChoice(reader, "Permission mode", []string{"default", "auto-edit", "plan-only", "auto-full"}, "default")
+	modelForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Model").
+				Placeholder(defaultModel).
+				Value(&model),
+		),
+	)
+	if err := modelForm.Run(); err != nil {
+		return err
+	}
+	if model == "" {
+		model = defaultModel
+	}
 
-	// Step 5: Include example hooks?
-	fmt.Print("Include example hooks? [y/N] ")
-	hookAnswer, _ := reader.ReadString('\n')
-	hookAnswer = strings.TrimSpace(strings.ToLower(hookAnswer))
+	// Step 3: Choose permission mode.
+	permForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Permission mode").
+				Options(
+					huh.NewOption("default", "default"),
+					huh.NewOption("auto-edit", "auto-edit"),
+					huh.NewOption("plan-only", "plan-only"),
+					huh.NewOption("auto-full", "auto-full"),
+				).
+				Value(&permMode),
+		),
+	)
+	if err := permForm.Run(); err != nil {
+		return err
+	}
+
+	// Step 4: Include example hooks?
+	hookForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Include example hooks?").
+				Value(&includeHooks),
+		),
+	)
+	if err := hookForm.Run(); err != nil {
+		return err
+	}
 
 	cfg := initConfig{
 		Provider:       provider,
@@ -68,7 +125,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		PermissionMode: permMode,
 	}
 
-	if hookAnswer == "y" || hookAnswer == "yes" {
+	if includeHooks {
 		cfg.Hooks = map[string]interface{}{
 			"PreToolUse": []map[string]interface{}{
 				{
@@ -97,40 +154,4 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Created %s\n", configFile)
 	return nil
-}
-
-// promptChoice presents a numbered list and returns the selected value.
-func promptChoice(reader *bufio.Reader, label string, choices []string, defaultVal string) string {
-	fmt.Printf("\n%s:\n", label)
-	for i, c := range choices {
-		marker := "  "
-		if c == defaultVal {
-			marker = "> "
-		}
-		fmt.Printf("  %s%d) %s\n", marker, i+1, c)
-	}
-	fmt.Printf("Choice [%s]: ", defaultVal)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return defaultVal
-	}
-	// Try to match by number or value.
-	for i, c := range choices {
-		if input == fmt.Sprintf("%d", i+1) || strings.EqualFold(input, c) {
-			return c
-		}
-	}
-	return defaultVal
-}
-
-// promptInput asks for a free-text value with a default.
-func promptInput(reader *bufio.Reader, label, defaultVal string) string {
-	fmt.Printf("%s [%s]: ", label, defaultVal)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return defaultVal
-	}
-	return input
 }

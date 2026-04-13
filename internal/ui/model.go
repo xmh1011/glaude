@@ -13,6 +13,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -20,6 +21,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 
 	"github.com/xmh1011/glaude/internal/agent"
 	"github.com/xmh1011/glaude/internal/llm"
@@ -104,6 +106,16 @@ type Model struct {
 
 	// Skill registry for slash command fallback
 	skillRegistry *skill.Registry
+
+	// Slash command completion state
+	completions   []completion // filtered candidates
+	completionIdx int          // selected index (-1 = none)
+}
+
+// completion represents a slash command candidate.
+type completion struct {
+	name string
+	desc string
 }
 
 // NewModel creates a new REPL model.
@@ -138,12 +150,20 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model
 
 	childCtx, cancel := context.WithCancel(ctx)
 
+	// Get initial terminal width so first render has correct dimensions
+	initWidth := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		initWidth = w
+		ta.SetWidth(w)
+	}
+
 	return &Model{
 		agent:      a,
 		checkpoint: cp,
 		textarea:   ta,
 		spinner:    sp,
 		renderer:   r,
+		width:      initWidth,
 		ctx:        childCtx,
 		cancel:     cancel,
 	}
@@ -153,6 +173,52 @@ func NewModel(a *agent.Agent, cp *memory.Checkpoint, ctx context.Context) *Model
 // Must be called after NewProgram creates the program.
 func (m *Model) SetProgram(p *tea.Program) {
 	m.program = p
+}
+
+// updateCompletions recomputes the completion list based on current input.
+func (m *Model) updateCompletions() {
+	input := m.textarea.Value()
+	if !strings.HasPrefix(input, "/") {
+		m.completions = nil
+		m.completionIdx = -1
+		return
+	}
+
+	// Extract the partial command name after /
+	prefix := strings.ToLower(strings.TrimPrefix(input, "/"))
+	prefix = strings.SplitN(prefix, " ", 2)[0] // only match command name part
+
+	var candidates []completion
+
+	// Built-in commands
+	for _, cmd := range commands() {
+		if strings.HasPrefix(cmd.name, prefix) {
+			candidates = append(candidates, completion{name: cmd.name, desc: cmd.description})
+		}
+	}
+
+	// Skills
+	if m.skillRegistry != nil {
+		for _, s := range m.skillRegistry.UserInvocable() {
+			if strings.HasPrefix(s.Name, prefix) {
+				desc := s.Description
+				if desc == "" {
+					desc = "Skill"
+				}
+				candidates = append(candidates, completion{name: s.Name, desc: desc})
+			}
+		}
+	}
+
+	m.completions = candidates
+	if len(candidates) > 0 && m.completionIdx >= len(candidates) {
+		m.completionIdx = 0
+	}
+	if len(candidates) == 0 {
+		m.completionIdx = -1
+	} else if m.completionIdx < 0 {
+		m.completionIdx = 0
+	}
 }
 
 // SetSkillRegistry sets the skill registry for slash command fallback.
@@ -179,6 +245,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Permission prompt intercepts all key input
 		if m.permPrompt && m.permRequest != nil {
 			return m.handlePermissionKey(msg)
+		}
+
+		// Completion navigation when candidates are visible
+		if len(m.completions) > 0 && !m.waiting {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.completionIdx > 0 {
+					m.completionIdx--
+				} else {
+					m.completionIdx = len(m.completions) - 1
+				}
+				return m, nil
+			case tea.KeyDown:
+				if m.completionIdx < len(m.completions)-1 {
+					m.completionIdx++
+				} else {
+					m.completionIdx = 0
+				}
+				return m, nil
+			case tea.KeyTab:
+				// Accept selected completion
+				sel := m.completions[m.completionIdx]
+				m.textarea.SetValue("/" + sel.name + " ")
+				m.textarea.CursorEnd()
+				m.completions = nil
+				m.completionIdx = -1
+				return m, nil
+			case tea.KeyEsc:
+				m.completions = nil
+				m.completionIdx = -1
+				return m, nil
+			}
 		}
 
 		switch msg.Type {
@@ -226,6 +324,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.textarea.Reset()
+			m.completions = nil
+			m.completionIdx = -1
 
 			// Check for slash commands
 			if strings.HasPrefix(input, "/") {
@@ -352,6 +452,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		cmds = append(cmds, cmd)
+		// Refresh completions after input changes
+		m.updateCompletions()
 	}
 
 	return m, tea.Batch(cmds...)
@@ -424,16 +526,19 @@ func (m *Model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	// Input area with dividers
+	// Input area with dividers and status hint
 	if !m.waiting && !m.permPrompt {
 		divider := dividerStyle.Render(strings.Repeat("─", max(m.width, 40)))
 		b.WriteString(divider + "\n")
 		b.WriteString(m.textarea.View())
-		b.WriteString("\n" + divider + "\n")
+		b.WriteString("\n")
+		// Completion menu
+		if len(m.completions) > 0 {
+			b.WriteString(m.renderCompletions())
+		}
+		b.WriteString(divider + "\n")
+		b.WriteString(m.renderStatusBar())
 	}
-
-	// Status bar
-	b.WriteString(m.renderStatusBar())
 
 	return b.String()
 }
@@ -510,35 +615,88 @@ func (m *Model) renderMessage(msg displayMessage) string {
 	}
 }
 
-// renderStatusBar renders the bottom status bar with token budget indicator.
+// renderStatusBar renders a subtle single-line status hint below the input,
+// matching Claude Code's minimal bottom-bar style.
 func (m *Model) renderStatusBar() string {
 	usage := m.agent.TotalUsage()
 	budget := m.agent.Budget()
 
-	modeStr := ""
+	// Permission mode indicator
+	modeStr := "default"
 	if m.agent.Gate() != nil {
-		modeStr = m.agent.Gate().Checker().Mode().String() + " | "
+		modeStr = m.agent.Gate().Checker().Mode().String()
 	}
-
-	left := fmt.Sprintf(" %s%d msgs", modeStr, len(m.messages))
 
 	pct := budget.UsagePercent()
-	right := fmt.Sprintf("ctx: %.0f%% | %d in / %d out ",
-		pct, usage.InputTokens, usage.OutputTokens)
+	ctx := fmt.Sprintf("%.0f%%", pct)
 
-	gap := ""
-	if m.width > len(left)+len(right) {
-		gap = strings.Repeat(" ", m.width-len(left)-len(right))
-	}
+	tokens := fmt.Sprintf("%d↑ %d↓", usage.InputTokens, usage.OutputTokens)
 
+	line := fmt.Sprintf(" ►► %s mode | ctx %s | %s", modeStr, ctx, tokens)
+
+	// Pick style based on budget pressure
 	style := statusBarStyle
 	if budget.NeedsCompact() {
-		style = statusBarStyle.Background(lipgloss.Color("124")) // red bg
+		style = statusBarCritStyle
 	} else if budget.NeedsWarning() {
-		style = statusBarStyle.Background(lipgloss.Color("130")) // yellow bg
+		style = statusBarWarnStyle
 	}
 
-	return style.Render(left + gap + right)
+	return style.Render(line)
+}
+
+// renderCompletions renders the slash command completion menu.
+func (m *Model) renderCompletions() string {
+	var b strings.Builder
+	maxItems := 8
+	if len(m.completions) < maxItems {
+		maxItems = len(m.completions)
+	}
+
+	// Show a window of items around the selected index
+	start := 0
+	if m.completionIdx >= maxItems {
+		start = m.completionIdx - maxItems + 1
+	}
+	end := start + maxItems
+	if end > len(m.completions) {
+		end = len(m.completions)
+		start = end - maxItems
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	for i := start; i < end; i++ {
+		c := m.completions[i]
+		name := "/" + c.name
+		desc := c.desc
+
+		// Truncate description to fit
+		maxDesc := m.width - len(name) - 6
+		if maxDesc < 0 {
+			maxDesc = 0
+		}
+		if len(desc) > maxDesc {
+			if maxDesc > 3 {
+				desc = desc[:maxDesc-1] + "…"
+			} else {
+				desc = ""
+			}
+		}
+
+		if i == m.completionIdx {
+			line := fmt.Sprintf("  %-20s %s", name, desc)
+			b.WriteString(completionSelectedStyle.Render(line))
+		} else {
+			nameStr := completionNameStyle.Render(fmt.Sprintf("  %-20s", name))
+			descStr := completionDescStyle.Render(" " + desc)
+			b.WriteString(nameStr + descStr)
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
 }
 
 // runAgent sends the prompt to the agent in a goroutine and returns a Cmd.
