@@ -32,7 +32,20 @@ func TestModel_View_Quitting(t *testing.T) {
 	m := NewModel(a, cp, context.Background())
 	m.quitting = true
 	view := m.View()
-	assert.Contains(t, view, "Goodbye")
+	assert.Empty(t, view, "view should be empty on quit (goodbye is printed after alt screen exits)")
+}
+
+func TestModel_ExitMessage(t *testing.T) {
+	cp := memory.NewCheckpoint()
+	a := agent.New(&testMockProvider{}, "test-model", "test prompt", nil)
+	m := NewModel(a, cp, context.Background())
+	assert.Contains(t, m.ExitMessage(), "Goodbye")
+
+	m.sessionID = "abc-123"
+	msg := m.ExitMessage()
+	assert.Contains(t, msg, "Goodbye")
+	assert.Contains(t, msg, "glaude --resume abc-123")
+	assert.Contains(t, msg, "glaude --continue")
 }
 
 func TestModel_View_WithMessages(t *testing.T) {

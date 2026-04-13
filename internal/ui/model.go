@@ -109,6 +109,11 @@ type Model struct {
 	// Slash command completion state
 	completions   []completion // filtered candidates
 	completionIdx int          // selected index (-1 = none)
+
+	// Input history (up/down arrow navigation)
+	inputHistory []string // past user inputs, oldest first
+	historyIdx   int      // current position (-1 = not browsing)
+	historySaved string   // saved current input while browsing
 }
 
 // completion represents a slash command candidate.
@@ -317,6 +322,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Input history navigation (Up/Down when no completion menu and not waiting)
+		if len(m.completions) == 0 && !m.waiting && len(m.inputHistory) > 0 {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.historyIdx == -1 {
+					// Start browsing: save current input, go to newest history entry
+					m.historySaved = m.textarea.Value()
+					m.historyIdx = len(m.inputHistory) - 1
+				} else if m.historyIdx > 0 {
+					m.historyIdx--
+				}
+				m.textarea.SetValue(m.inputHistory[m.historyIdx])
+				m.textarea.CursorEnd()
+				return m, nil
+			case tea.KeyDown:
+				if m.historyIdx >= 0 {
+					if m.historyIdx < len(m.inputHistory)-1 {
+						m.historyIdx++
+						m.textarea.SetValue(m.inputHistory[m.historyIdx])
+					} else {
+						// Past newest entry: restore saved input
+						m.historyIdx = -1
+						m.textarea.SetValue(m.historySaved)
+						m.historySaved = ""
+					}
+					m.textarea.CursorEnd()
+					return m, nil
+				}
+			}
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlD:
 			m.quitting = true
@@ -364,6 +400,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea.Reset()
 			m.completions = nil
 			m.completionIdx = -1
+
+			// Record input in history for up-arrow recall
+			m.inputHistory = append(m.inputHistory, input)
+			m.historyIdx = -1
+			m.historySaved = ""
 
 			// Check for slash commands
 			if strings.HasPrefix(input, "/") {
@@ -527,10 +568,9 @@ func (m *Model) handlePermissionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 func (m *Model) View() string {
 	if m.quitting {
-		if m.sessionID != "" {
-			return fmt.Sprintf("Goodbye!\n\nTo resume this conversation:\n  glaude --resume %s\n\nOr continue the most recent conversation:\n  glaude --continue\n", m.sessionID)
-		}
-		return "Goodbye!\n"
+		// Don't render goodbye in alt screen — it gets cleared on exit.
+		// The exit message is printed to stdout via ExitMessage() after p.Run().
+		return ""
 	}
 
 	var b strings.Builder
@@ -738,6 +778,15 @@ func (m *Model) renderCompletions() string {
 	}
 
 	return b.String()
+}
+
+// ExitMessage returns the message to print after the program exits.
+// This is printed to stdout by main.go, not rendered in the alt screen.
+func (m *Model) ExitMessage() string {
+	if m.sessionID != "" {
+		return fmt.Sprintf("Goodbye!\n\nTo resume this conversation:\n  glaude --resume %s\n\nOr continue the most recent conversation:\n  glaude --continue\n", m.sessionID)
+	}
+	return "Goodbye!\n"
 }
 
 // runAgent sends the prompt to the agent in a goroutine and returns a Cmd.

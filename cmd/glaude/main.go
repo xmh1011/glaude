@@ -274,6 +274,9 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("UI: %w", err)
 			}
+
+			// Print exit message to stdout after alt screen is cleared
+			fmt.Print(m.ExitMessage())
 			return nil
 		},
 	}
