@@ -95,6 +95,15 @@ type Model struct {
 	permPrompt  bool                  // true when showing permission prompt
 	permRequest *permissionRequestMsg // current permission request
 
+	// AskUserQuestion prompt state
+	askPrompt   bool           // true when showing ask user prompt
+	askRequest  *askUserMsg    // current ask request
+	askCurrentQ int            // index of current question being displayed
+	askSelected []int          // selected option indices (multi-select)
+	askAnswers  map[string]string // accumulated answers
+	askOtherMode bool          // true when entering custom "Other" text
+	askOtherBuf  string        // custom input buffer
+
 	// Program reference for streaming callbacks.
 	// Since Model is used as a pointer, this can be a direct *tea.Program.
 	program *tea.Program
@@ -285,6 +294,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// AskUser prompt intercepts all key input
+		if m.askPrompt && m.askRequest != nil {
+			return m.handleAskUserKey(msg)
+		}
+
 		// Permission prompt intercepts all key input
 		if m.permPrompt && m.permRequest != nil {
 			return m.handlePermissionKey(msg)
@@ -368,6 +382,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.streamText = ""
 				m.permPrompt = false
 				m.permRequest = nil
+				m.resetAskState()
 				m.messages = append(m.messages, displayMessage{
 					role: llm.RoleAssistant,
 					text: "(interrupted)",
@@ -440,6 +455,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.permRequest = &msg
 		return m, nil
 
+	case askUserMsg:
+		m.askPrompt = true
+		m.askRequest = &msg
+		m.askCurrentQ = 0
+		m.askSelected = nil
+		m.askAnswers = make(map[string]string)
+		m.askOtherMode = false
+		m.askOtherBuf = ""
+		return m, nil
+
 	case streamTextMsg:
 		m.streamText += msg.text
 		return m, nil
@@ -466,6 +491,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.permPrompt = false
 		m.permRequest = nil
+		m.resetAskState()
 		if msg.err != nil {
 			m.err = msg.err
 			// If there was partial stream text, include it
@@ -504,6 +530,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamText = ""
 		m.permPrompt = false
 		m.permRequest = nil
+		m.resetAskState()
 		if msg.err != nil {
 			m.err = msg.err
 			m.messages = append(m.messages, displayMessage{
@@ -542,7 +569,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Pass remaining events to textarea
-	if !m.waiting && !m.permPrompt {
+	if !m.waiting && !m.permPrompt && !m.askPrompt {
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		cmds = append(cmds, cmd)
@@ -605,6 +632,9 @@ func (m *Model) View() string {
 	if m.permPrompt && m.permRequest != nil {
 		b.WriteString(m.renderPermissionPrompt())
 		b.WriteString("\n")
+	} else if m.askPrompt && m.askRequest != nil {
+		b.WriteString(m.renderAskUser())
+		b.WriteString("\n")
 	} else if m.streaming && m.streamText != "" {
 		// Render streaming text with blinking cursor
 		label := assistantLabelStyle.Render("Assistant")
@@ -623,7 +653,7 @@ func (m *Model) View() string {
 	}
 
 	// Input area with dividers and status hint
-	if !m.waiting && !m.permPrompt {
+	if !m.waiting && !m.permPrompt && !m.askPrompt {
 		divider := dividerStyle.Render(strings.Repeat("─", max(m.width, 40)))
 		b.WriteString(divider + "\n")
 		b.WriteString(m.textarea.View())

@@ -32,6 +32,7 @@ import (
 	"github.com/xmh1011/glaude/internal/skill/bundled"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
+	"github.com/xmh1011/glaude/internal/tool/askuser"
 	"github.com/xmh1011/glaude/internal/tool/bash"
 	"github.com/xmh1011/glaude/internal/tool/fileedit"
 	"github.com/xmh1011/glaude/internal/tool/fileread"
@@ -41,6 +42,7 @@ import (
 	"github.com/xmh1011/glaude/internal/tool/ls"
 	"github.com/xmh1011/glaude/internal/tool/skilltool"
 	"github.com/xmh1011/glaude/internal/tool/subagent"
+	"github.com/xmh1011/glaude/internal/tool/webfetch"
 	"github.com/xmh1011/glaude/internal/ui"
 )
 
@@ -294,6 +296,11 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			telemetry.Log.WithField("permission_mode", permMode.String()).Info("permission mode configured")
 			ui.WirePermissionGate(a, p, permMode)
 
+			// Wire AskUserQuestion tool to the UI
+			if askTool, ok := reg.Get("AskUserQuestion").(*askuser.Tool); ok {
+				ui.WireAskUser(askTool, p)
+			}
+
 			// Skip all permission checks if requested
 			if skipPerms {
 				a.Gate().SetSkipAll(true)
@@ -357,6 +364,8 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, s
 	reg.Register(&grep.Tool{})
 	reg.Register(&ls.Tool{})
 	reg.Register(&subagent.Tool{Provider: provider, Model: model, Registry: reg})
+	reg.Register(webfetch.New(provider, model))
+	reg.Register(&askuser.Tool{})
 	if skillReg != nil && len(skillReg.All()) > 0 {
 		reg.Register(&skilltool.Tool{SkillRegistry: skillReg})
 	}
