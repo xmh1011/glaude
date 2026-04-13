@@ -9,6 +9,19 @@ import (
 	"github.com/xmh1011/glaude/internal/tool"
 )
 
+// ConnectAllFromConfig reads MCP server configurations from viper and
+// connects them using the provided Manager, registering tools into reg.
+func ConnectAllFromConfig(ctx context.Context, mgr *Manager, reg *tool.Registry) {
+	var configs []ServerConfig
+	if err := viper.UnmarshalKey("mcp_servers", &configs); err != nil {
+		telemetry.Log.
+			WithField("error", err.Error()).
+			Debug("mcp: no servers configured or invalid config")
+		return
+	}
+	ConnectAll(ctx, mgr, configs, reg)
+}
+
 // LoadFromConfig reads MCP server configurations from viper and
 // registers discovered tools into the given Registry.
 //

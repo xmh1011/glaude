@@ -17,7 +17,17 @@ import (
 // a [y/n] prompt, and the user's response is returned via a channel.
 func WirePermissionGate(a *agent.Agent, p *tea.Program, mode permission.Mode) {
 	checker := permission.NewCheckerWithMode(mode)
+	wireGateWithChecker(a, p, checker)
+}
 
+// WirePermissionGateWithChecker is like WirePermissionGate but uses an
+// existing Checker. This allows other components (e.g. plan mode tools)
+// to share the same Checker instance.
+func WirePermissionGateWithChecker(a *agent.Agent, p *tea.Program, checker *permission.Checker) {
+	wireGateWithChecker(a, p, checker)
+}
+
+func wireGateWithChecker(a *agent.Agent, p *tea.Program, checker *permission.Checker) {
 	promptFn := func(ctx context.Context, toolName string, description string, scan *permission.ScanResult) bool {
 		responseCh := make(chan bool, 1)
 

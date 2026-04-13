@@ -30,19 +30,38 @@ import (
 	"github.com/xmh1011/glaude/internal/session"
 	"github.com/xmh1011/glaude/internal/skill"
 	"github.com/xmh1011/glaude/internal/skill/bundled"
+	"github.com/xmh1011/glaude/internal/state"
 	"github.com/xmh1011/glaude/internal/telemetry"
 	"github.com/xmh1011/glaude/internal/tool"
 	"github.com/xmh1011/glaude/internal/tool/askuser"
 	"github.com/xmh1011/glaude/internal/tool/bash"
+	"github.com/xmh1011/glaude/internal/tool/configtool"
 	"github.com/xmh1011/glaude/internal/tool/fileedit"
 	"github.com/xmh1011/glaude/internal/tool/fileread"
 	"github.com/xmh1011/glaude/internal/tool/filewrite"
 	"github.com/xmh1011/glaude/internal/tool/glob"
 	"github.com/xmh1011/glaude/internal/tool/grep"
 	"github.com/xmh1011/glaude/internal/tool/ls"
+	"github.com/xmh1011/glaude/internal/tool/mcpreslist"
+	"github.com/xmh1011/glaude/internal/tool/mcpresread"
+	"github.com/xmh1011/glaude/internal/tool/notebookedit"
+	"github.com/xmh1011/glaude/internal/tool/planenter"
+	"github.com/xmh1011/glaude/internal/tool/planexit"
 	"github.com/xmh1011/glaude/internal/tool/skilltool"
+	"github.com/xmh1011/glaude/internal/tool/sleep"
 	"github.com/xmh1011/glaude/internal/tool/subagent"
+	"github.com/xmh1011/glaude/internal/tool/taskcreate"
+	"github.com/xmh1011/glaude/internal/tool/taskget"
+	"github.com/xmh1011/glaude/internal/tool/tasklist"
+	"github.com/xmh1011/glaude/internal/tool/taskoutput"
+	"github.com/xmh1011/glaude/internal/tool/taskstop"
+	"github.com/xmh1011/glaude/internal/tool/taskupdate"
+	"github.com/xmh1011/glaude/internal/tool/todowrite"
+	"github.com/xmh1011/glaude/internal/tool/toolsearch"
 	"github.com/xmh1011/glaude/internal/tool/webfetch"
+	"github.com/xmh1011/glaude/internal/tool/websearch"
+	"github.com/xmh1011/glaude/internal/tool/worktreeenter"
+	"github.com/xmh1011/glaude/internal/tool/worktreeexit"
 	"github.com/xmh1011/glaude/internal/ui"
 )
 
@@ -140,7 +159,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				}
 				pluginMgr.LoadSkills(skillReg)
 
-				reg := buildRegistry(nil, provider, model, skillReg)
+				reg := buildRegistry(nil, provider, model, skillReg, state.New(), nil, mcp.NewManager())
 
 				// Load MCP servers from config + plugins
 				mcpMgr, err := mcp.LoadFromConfig(cmd.Context(), reg)
@@ -212,10 +231,16 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			}
 			pluginMgr.LoadSkills(skillReg)
 
-			reg := buildRegistry(cp, provider, model, skillReg)
+			// Create shared state and permission checker for plan mode tools.
+			st := state.New()
+			permMode := permission.ParseMode(viper.GetString("permission_mode"))
+			permChecker := permission.NewCheckerWithMode(permMode)
+			mcpMgr := mcp.NewManager()
 
-			// Load MCP servers from config + plugins
-			mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+			reg := buildRegistry(cp, provider, model, skillReg, st, permChecker, mcpMgr)
+
+			// Load MCP servers from config + plugins into shared manager
+			mcp.ConnectAllFromConfig(cmd.Context(), mcpMgr, reg)
 			mcp.ConnectAll(cmd.Context(), mcpMgr, pluginMgr.MCPConfigs(), reg)
 			defer mcpMgr.Close()
 
@@ -300,10 +325,9 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 
 			p := ui.NewProgram(m)
 
-			// Wire permission gate: reads mode from config, bridges Ask to UI prompt
-			permMode := permission.ParseMode(viper.GetString("permission_mode"))
+			// Wire permission gate: uses shared checker, bridges Ask to UI prompt
 			telemetry.Log.WithField("permission_mode", permMode.String()).Info("permission mode configured")
-			ui.WirePermissionGate(a, p, permMode)
+			ui.WirePermissionGateWithChecker(a, p, permChecker)
 
 			// Wire AskUserQuestion tool to the UI
 			if askTool, ok := reg.Get("AskUserQuestion").(*askuser.Tool); ok {
@@ -359,12 +383,20 @@ func buildVersionCmd() *cobra.Command {
 // If cp is nil, a new Checkpoint is created internally.
 // provider and model are used for sub-agent spawning.
 // skillReg is used to register the Skill tool (may be nil).
-func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, skillReg *skill.Registry) *tool.Registry {
+// st is the shared session state for task/todo/plan/worktree tools.
+// checker is the permission checker for plan mode tools.
+// mcpMgr is the MCP manager for resource tools (may be nil).
+func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, skillReg *skill.Registry, st *state.State, checker *permission.Checker, mcpMgr *mcp.Manager) *tool.Registry {
 	if cp == nil {
 		cp = memory.NewCheckpoint()
 	}
+	if st == nil {
+		st = state.New()
+	}
 	fileState := tool.NewFileStateCache()
 	reg := tool.NewRegistry()
+
+	// Core tools
 	reg.Register(&fileread.Tool{FileState: fileState})
 	reg.Register(&fileedit.Tool{Checkpoint: cp, FileState: fileState})
 	reg.Register(&filewrite.Tool{Checkpoint: cp, FileState: fileState})
@@ -375,9 +407,52 @@ func buildRegistry(cp *memory.Checkpoint, provider llm.Provider, model string, s
 	reg.Register(&subagent.Tool{Provider: provider, Model: model, Registry: reg})
 	reg.Register(webfetch.New(provider, model))
 	reg.Register(&askuser.Tool{})
+
+	// Sleep
+	reg.Register(&sleep.Tool{})
+
+	// Todo
+	reg.Register(&todowrite.Tool{State: st})
+
+	// Task system
+	reg.Register(&taskcreate.Tool{State: st})
+	reg.Register(&taskget.Tool{State: st})
+	reg.Register(&tasklist.Tool{State: st})
+	reg.Register(&taskupdate.Tool{State: st})
+	reg.Register(&taskstop.Tool{})
+	reg.Register(&taskoutput.Tool{})
+
+	// Plan mode
+	if checker != nil {
+		reg.Register(&planenter.Tool{State: st, Checker: checker})
+		reg.Register(&planexit.Tool{State: st, Checker: checker})
+	}
+
+	// Config + ToolSearch
+	reg.Register(&configtool.Tool{})
+	reg.Register(&toolsearch.Tool{Registry: reg})
+
+	// MCP resources
+	if mcpMgr != nil {
+		reg.Register(&mcpreslist.Tool{Manager: mcpMgr})
+		reg.Register(&mcpresread.Tool{Manager: mcpMgr})
+	}
+
+	// Notebook
+	reg.Register(&notebookedit.Tool{})
+
+	// Worktree
+	reg.Register(&worktreeenter.Tool{State: st})
+	reg.Register(&worktreeexit.Tool{State: st})
+
+	// WebSearch
+	reg.Register(&websearch.Tool{Provider: provider, Model: model})
+
+	// Skill (conditional)
 	if skillReg != nil && len(skillReg.All()) > 0 {
 		reg.Register(&skilltool.Tool{SkillRegistry: skillReg})
 	}
+
 	return reg
 }
 
