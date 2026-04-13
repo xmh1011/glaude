@@ -103,8 +103,9 @@ func (r *RetryProvider) Complete(ctx context.Context, req *Request) (*Response, 
 }
 
 // CompleteStream wraps the inner provider's streaming method with retry logic.
-// Unlike non-streaming Complete, only the initial connection is retried.
-// Once a stream is successfully established, it is returned as-is.
+// OpenAI-compatible providers return errors asynchronously via EventError in the
+// channel rather than from the CompleteStream call itself. This method detects
+// early stream errors (e.g. HTTP 500 before any content) and retries them.
 func (r *RetryProvider) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
 	inner, ok := r.inner.(StreamingProvider)
 	if !ok {
@@ -118,15 +119,44 @@ func (r *RetryProvider) CompleteStream(ctx context.Context, req *Request) (<-cha
 		}
 
 		ch, err := inner.CompleteStream(ctx, req)
-		if err == nil {
-			return ch, nil
-		}
+		if err != nil {
+			// Synchronous error from CompleteStream itself
+			if !isRetryable(err) {
+				return nil, err
+			}
+			lastErr = err
+		} else {
+			// Stream opened successfully, but the first event might be an error
+			// (OpenAI SDK reports HTTP errors asynchronously via the channel).
+			// Peek at the first event to detect early failures.
+			firstEvent, ok := <-ch
+			if !ok {
+				// Channel closed immediately — empty response, not retryable
+				outCh := make(chan StreamEvent)
+				close(outCh)
+				return outCh, nil
+			}
 
-		if !isRetryable(err) {
-			return nil, err
+			if firstEvent.Type == EventError && firstEvent.Error != nil && isRetryable(firstEvent.Error) {
+				// Early stream error (e.g. HTTP 500) — drain and retry
+				lastErr = firstEvent.Error
+				// Drain remaining events to clean up resources
+				for range ch {
+				}
+			} else {
+				// Not an error, or not retryable — forward the first event
+				// and proxy the rest of the channel.
+				outCh := make(chan StreamEvent, 64)
+				go func() {
+					defer close(outCh)
+					outCh <- firstEvent
+					for ev := range ch {
+						outCh <- ev
+					}
+				}()
+				return outCh, nil
+			}
 		}
-
-		lastErr = err
 
 		if attempt < r.config.MaxRetries {
 			delay := r.backoffDelay(attempt)
@@ -135,7 +165,7 @@ func (r *RetryProvider) CompleteStream(ctx context.Context, req *Request) (<-cha
 				WithField("attempt", attempt+1).
 				WithField("max_retries", r.config.MaxRetries).
 				WithField("delay_ms", delay.Milliseconds()).
-				WithField("error", err.Error()).
+				WithField("error", lastErr.Error()).
 				Warn("retrying stream API call")
 
 			select {
