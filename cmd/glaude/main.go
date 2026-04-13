@@ -236,6 +236,13 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 
 			m := ui.NewModel(a, cp, cmd.Context())
 			m.SetSkillRegistry(skillReg)
+
+			// Restore display messages from session history so the user
+			// can see the previous conversation when using --continue/--resume.
+			if continueFlag || resumeSession != "" {
+				m.RestoreMessages()
+			}
+
 			p := ui.NewProgram(m)
 
 			// Wire permission gate: reads mode from config, bridges Ask to UI prompt

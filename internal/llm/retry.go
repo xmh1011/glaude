@@ -102,15 +102,52 @@ func (r *RetryProvider) Complete(ctx context.Context, req *Request) (*Response, 
 	return nil, fmt.Errorf("max retries (%d) exhausted: %w", r.config.MaxRetries, lastErr)
 }
 
-// CompleteStream passes through to the inner provider's streaming method.
-// Streaming calls are not retried—once a connection is established, the
-// stream semantics differ from request-response.
+// CompleteStream wraps the inner provider's streaming method with retry logic.
+// Unlike non-streaming Complete, only the initial connection is retried.
+// Once a stream is successfully established, it is returned as-is.
 func (r *RetryProvider) CompleteStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
 	inner, ok := r.inner.(StreamingProvider)
 	if !ok {
 		return nil, fmt.Errorf("retry: inner provider does not support streaming")
 	}
-	return inner.CompleteStream(ctx, req)
+
+	var lastErr error
+	for attempt := 0; attempt <= r.config.MaxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		ch, err := inner.CompleteStream(ctx, req)
+		if err == nil {
+			return ch, nil
+		}
+
+		if !isRetryable(err) {
+			return nil, err
+		}
+
+		lastErr = err
+
+		if attempt < r.config.MaxRetries {
+			delay := r.backoffDelay(attempt)
+
+			telemetry.Log.
+				WithField("attempt", attempt+1).
+				WithField("max_retries", r.config.MaxRetries).
+				WithField("delay_ms", delay.Milliseconds()).
+				WithField("error", err.Error()).
+				Warn("retrying stream API call")
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+				// continue to next attempt
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("max retries (%d) exhausted: %w", r.config.MaxRetries, lastErr)
 }
 
 // backoffDelay calculates exponential backoff with jitter for the given attempt.

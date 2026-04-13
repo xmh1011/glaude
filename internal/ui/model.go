@@ -227,6 +227,39 @@ func (m *Model) SetSkillRegistry(reg *skill.Registry) {
 	m.skillRegistry = reg
 }
 
+// RestoreMessages populates the UI display messages from the agent's
+// conversation history. Call this after --continue or --resume to show
+// the previous conversation in the terminal.
+func (m *Model) RestoreMessages() {
+	for _, msg := range m.agent.Messages() {
+		dm := displayMessage{role: msg.Role}
+		var texts []string
+		for _, block := range msg.Content {
+			switch block.Type {
+			case llm.ContentText:
+				if block.Text != "" {
+					texts = append(texts, block.Text)
+				}
+			case llm.ContentToolUse:
+				// Show tool calls as summary lines
+				m.messages = append(m.messages, displayMessage{
+					role:    llm.RoleAssistant,
+					toolUse: block.Name,
+					text:    fmt.Sprintf("Using tool: **%s**", block.Name),
+				})
+				continue
+			case llm.ContentToolResult:
+				// Skip tool results in display (they're internal)
+				continue
+			}
+		}
+		if len(texts) > 0 {
+			dm.text = strings.Join(texts, "\n")
+			m.messages = append(m.messages, dm)
+		}
+	}
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
