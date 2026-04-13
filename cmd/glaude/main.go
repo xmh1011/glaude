@@ -98,9 +98,9 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "glaude",
-		Short: "AI Coding Agent powered by LLM",
-		Long:  "glaude is a Go implementation of an AI coding agent, inspired by Claude Code architecture.",
+		Use:           "glaude",
+		Short:         "AI Coding Agent powered by LLM",
+		Long:          "glaude is a Go implementation of an AI coding agent, inspired by Claude Code architecture.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -127,7 +127,10 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				// One-shot mode: run a single prompt and exit
 				telemetry.Log.WithField("mode", "oneshot").Info("prompt received")
 
-				provider := llm.NewProvider(providerName, model)
+				provider, err := llm.NewProvider(cmd.Context(), providerName)
+				if err != nil {
+					return fmt.Errorf("create provider: %w", err)
+				}
 				skillReg := buildSkillRegistry(cwd)
 
 				// Discover and load plugins
@@ -140,7 +143,10 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 				reg := buildRegistry(nil, provider, model, skillReg)
 
 				// Load MCP servers from config + plugins
-				mcpMgr, _ := mcp.LoadFromConfig(cmd.Context(), reg)
+				mcpMgr, err := mcp.LoadFromConfig(cmd.Context(), reg)
+				if err != nil {
+					return fmt.Errorf("load MCP servers: %w", err)
+				}
 				mcp.ConnectAll(cmd.Context(), mcpMgr, pluginMgr.MCPConfigs(), reg)
 				defer mcpMgr.Close()
 
@@ -192,7 +198,10 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			// Default: REPL mode
 			telemetry.Log.WithField("mode", "repl").Info("entering REPL")
 
-			provider := llm.NewProvider(providerName, model)
+			provider, err := llm.NewProvider(cmd.Context(), providerName)
+			if err != nil {
+				return fmt.Errorf("create provider: %w", err)
+			}
 			cp := memory.NewCheckpoint()
 			skillReg := buildSkillRegistry(cwd)
 

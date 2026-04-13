@@ -56,6 +56,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 				Options(
 					huh.NewOption("anthropic", "anthropic"),
 					huh.NewOption("openai", "openai"),
+					huh.NewOption("gemini", "gemini"),
+					huh.NewOption("qianfan (百度千帆)", "qianfan"),
+					huh.NewOption("deepseek", "deepseek"),
+					huh.NewOption("qwen (通义千问)", "qwen"),
+					huh.NewOption("doubao (豆包)", "doubao"),
 					huh.NewOption("ollama", "ollama"),
 				).
 				Value(&provider),
@@ -67,9 +72,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Step 2: Choose model (default depends on provider).
 	defaultModel := "claude-sonnet-4-20250514"
-	if provider == "openai" {
+	switch provider {
+	case "openai":
 		defaultModel = "gpt-4o"
-	} else if provider == "ollama" {
+	case "gemini":
+		defaultModel = "gemini-2.5-flash"
+	case "qianfan":
+		defaultModel = "ernie-4.0-8k"
+	case "deepseek":
+		defaultModel = "deepseek-chat"
+	case "qwen":
+		defaultModel = "qwen-plus"
+	case "doubao":
+		defaultModel = "doubao-pro-32k"
+	case "ollama":
 		defaultModel = "llama3"
 	}
 	model = defaultModel
