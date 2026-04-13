@@ -551,6 +551,23 @@ func (a *Agent) Budget() *compact.Budget {
 	return a.budget
 }
 
+// Compact manually triggers context compression via AutoCompact.
+// Returns the number of messages before and after compaction.
+func (a *Agent) Compact(ctx context.Context) (before, after int, err error) {
+	before = len(a.messages)
+	if before < 4 {
+		return before, before, fmt.Errorf("too few messages to compact (%d)", before)
+	}
+	compacted, err := a.autoCompactor.Compact(ctx, a.messages)
+	if err != nil {
+		return before, before, err
+	}
+	a.messages = compacted
+	a.budget.ResetCalibration()
+	after = len(a.messages)
+	return before, after, nil
+}
+
 // recordEntry persists a message entry to the session store if available.
 func (a *Agent) recordEntry(entryType string, msg *llm.Message) {
 	if a.session == nil {

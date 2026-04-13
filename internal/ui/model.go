@@ -307,7 +307,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.completionIdx = 0
 				}
 				return m, nil
-			case tea.KeyTab:
+			case tea.KeyTab, tea.KeyEnter:
 				// Accept selected completion
 				sel := m.completions[m.completionIdx]
 				m.textarea.SetValue("/" + sel.name + " ")
@@ -514,6 +514,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, displayMessage{
 				role: llm.RoleAssistant,
 				text: msg.text,
+			})
+		}
+		return m, nil
+
+	case compactDoneMsg:
+		m.waiting = false
+		if msg.err != nil {
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: fmt.Sprintf("Compact failed: %v", msg.err),
+			})
+		} else {
+			m.messages = append(m.messages, displayMessage{
+				role: llm.RoleAssistant,
+				text: fmt.Sprintf("Compacted: %d messages → %d messages.", msg.before, msg.after),
 			})
 		}
 		return m, nil

@@ -27,6 +27,7 @@ func commands() []slashCommand {
 		{name: "context", description: "Show current context info", handler: cmdContext},
 		{name: "mode", description: "Show/set permission mode (default|auto-edit|plan-only|auto-full)", handler: cmdMode},
 		{name: "help", description: "Show available commands", handler: cmdHelp},
+		{name: "compact", description: "Compress conversation context to free up token budget", handler: cmdCompact},
 	}
 }
 
@@ -220,4 +221,26 @@ func cmdMode(m *Model, args string) (*Model, tea.Cmd) {
 		text: fmt.Sprintf("Permission mode set to **%s**.", newMode),
 	})
 	return m, nil
+}
+
+// compactDoneMsg signals that manual compact has completed.
+type compactDoneMsg struct {
+	before int
+	after  int
+	err    error
+}
+
+func cmdCompact(m *Model, _ string) (*Model, tea.Cmd) {
+	m.messages = append(m.messages, displayMessage{
+		role: llm.RoleAssistant,
+		text: "Compacting conversation context...",
+	})
+	m.waiting = true
+
+	ctx := m.ctx
+	a := m.agent
+	return m, func() tea.Msg {
+		before, after, err := a.Compact(ctx)
+		return compactDoneMsg{before: before, after: after, err: err}
+	}
 }
