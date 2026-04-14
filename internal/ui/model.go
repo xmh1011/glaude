@@ -26,6 +26,7 @@ import (
 	"github.com/xmh1011/glaude/internal/memory"
 	"github.com/xmh1011/glaude/internal/permission"
 	"github.com/xmh1011/glaude/internal/skill"
+	"github.com/xmh1011/glaude/internal/state"
 )
 
 // displayMessage is a rendered message for display in the UI.
@@ -122,6 +123,9 @@ type Model struct {
 	// Context for cancelling agent work
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Shared session state for task/plan display
+	state *state.State
 
 	// Skill registry for slash command fallback
 	skillRegistry *skill.Registry
@@ -251,6 +255,11 @@ func (m *Model) updateCompletions() {
 // skills in this registry.
 func (m *Model) SetSkillRegistry(reg *skill.Registry) {
 	m.skillRegistry = reg
+}
+
+// SetState sets the shared session state for task/plan display in the UI.
+func (m *Model) SetState(st *state.State) {
+	m.state = st
 }
 
 // SetSessionID sets the session ID shown in the exit hint.
@@ -385,10 +394,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyCtrlO:
-			// Toggle expand/collapse of tool outputs
-			if !m.waiting {
-				m.toggleExpanded()
-			}
+			// Toggle expand/collapse of tool outputs (works in any state)
+			m.toggleExpanded()
 			return m, nil
 
 		case tea.KeyCtrlC:
@@ -685,12 +692,23 @@ func (m *Model) View() string {
 		b.WriteString(label + "\n" + assistantMsgStyle.Render(rendered+cursor) + "\n\n")
 	} else if m.waiting {
 		// Spinner (waiting for first token or tool execution)
-		b.WriteString(spinnerStyle.Render(m.spinner.View() + " Thinking..."))
-		b.WriteString("\n\n")
+		spinnerText := m.activeSpinnerText()
+		b.WriteString(spinnerStyle.Render(m.spinner.View() + " " + spinnerText))
+		b.WriteString("\n")
+		// Task panel visible during thinking too
+		if taskPanel := m.renderTaskPanel(); taskPanel != "" {
+			b.WriteString(taskPanel)
+		}
+		b.WriteString("\n")
 	}
 
 	// Input area with dividers and status hint
 	if !m.waiting && !m.permPrompt && !m.askPrompt {
+		// Task panel (persistent, above input)
+		if taskPanel := m.renderTaskPanel(); taskPanel != "" {
+			b.WriteString(taskPanel)
+			b.WriteString("\n")
+		}
 		divider := dividerStyle.Render(strings.Repeat("─", max(m.width, 40)))
 		b.WriteString(divider + "\n")
 		b.WriteString(m.textarea.View())
@@ -838,6 +856,31 @@ func truncateResult(s string, maxLines int) string {
 	return result + fmt.Sprintf("\n... (%d more lines, Ctrl+O to expand)", len(lines)-maxLines)
 }
 
+// activeSpinnerText returns the text to display next to the spinner.
+// It uses the activeForm of the current in-progress task/todo, falling back to "Thinking...".
+func (m *Model) activeSpinnerText() string {
+	if m.state == nil {
+		return "Thinking..."
+	}
+	for _, t := range m.state.AllTasks() {
+		if t.Status == state.TaskInProgress {
+			if t.ActiveForm != "" {
+				return t.ActiveForm
+			}
+			return t.Subject
+		}
+	}
+	for _, todo := range m.state.Todos() {
+		if todo.Status == state.TodoInProgress {
+			if todo.ActiveForm != "" {
+				return todo.ActiveForm
+			}
+			return todo.Content
+		}
+	}
+	return "Thinking..."
+}
+
 // renderStatusBar renders a subtle single-line status hint below the input,
 // matching Claude Code's minimal bottom-bar style.
 func (m *Model) renderStatusBar() string {
@@ -856,6 +899,18 @@ func (m *Model) renderStatusBar() string {
 	tokens := fmt.Sprintf("%d↑ %d↓", usage.InputTokens, usage.OutputTokens)
 
 	line := fmt.Sprintf(" ►► %s mode | ctx %s | %s", modeStr, ctx, tokens)
+
+	// Plan mode and task count indicators
+	if m.state != nil {
+		if m.state.InPlanMode() {
+			line += " | plan"
+		}
+		tasks := m.state.AllTasks()
+		if len(tasks) > 0 {
+			done, inProg, _ := countTasks(tasks)
+			line += fmt.Sprintf(" | tasks %d/%d", done+inProg, len(tasks))
+		}
+	}
 
 	// Pick style based on budget pressure
 	style := statusBarStyle

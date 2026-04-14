@@ -318,6 +318,7 @@ func buildRootCmd(ctx context.Context, sigCh chan os.Signal) *cobra.Command {
 			m := ui.NewModel(a, cp, cmd.Context())
 			m.SetSkillRegistry(skillReg)
 			m.SetSessionID(sessionID)
+			m.SetState(st)
 
 			// Restore display messages from session history so the user
 			// can see the previous conversation when using --continue/--resume.
